@@ -4,6 +4,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Reown AppKit Web Components Support */
+appkit-button,
+appkit-network-button,
+appkit-account-button {
+  display: inline-block;
+}
+
+/* Browser compatibility fixes */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fix for iOS Safari */
+@supports (-webkit-touch-callout: none) {
+  body {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Ensure proper modal rendering */
+.w3m-modal,
+.appkit-modal {
+  z-index: 9999 !important;
+}
+
 :root {
   --background: hsl(0 0% 100%);
   --foreground: hsl(210 25% 7.8431%);

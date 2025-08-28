@@ -1,4 +1,5 @@
-import { createAppKit } from '@reown/appkit'
+
+import { createAppKit } from '@reown/appkit/react'
 import { EthersAdapter } from '@reown/appkit-adapter-ethers'
 import { celo } from '@reown/appkit/networks'
 import { ethers } from 'ethers'
@@ -15,13 +16,21 @@ const metadata = {
 
 const ethersAdapter = new EthersAdapter()
 
-createAppKit({
+// Create AppKit with proper configuration
+const modal = createAppKit({
   adapters: [ethersAdapter],
   networks: [celo],
   metadata,
   projectId,
   features: {
-    analytics: true
+    analytics: true,
+    email: false,
+    socials: []
+  },
+  themeMode: 'dark',
+  themeVariables: {
+    '--w3m-color-mix': '#00D2FF',
+    '--w3m-color-mix-strength': 20
   }
 })
 
@@ -31,6 +40,7 @@ interface WalletContextType {
   balance: string | null
   connect: () => Promise<void>
   disconnect: () => Promise<void>
+  openModal: () => void
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
@@ -43,6 +53,22 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   useEffect(() => {
     const checkConnection = async () => {
       try {
+        // Check if wallet is already connected
+        const walletInfo = modal?.getWalletInfo()
+        if (walletInfo) {
+          setIsConnected(true)
+          setAddress(walletInfo.address || null)
+        }
+
+        // Listen to modal events
+        modal?.subscribeState((state: any) => {
+          if (state.open === false && state.selectedNetworkId) {
+            // Modal closed and network selected
+            updateWalletState()
+          }
+        })
+
+        // Check for existing connection
         if (window.ethereum) {
           const provider = new ethers.BrowserProvider(window.ethereum as any)
           const accounts = await provider.listAccounts()
@@ -60,56 +86,83 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       }
     }
 
+    const updateWalletState = async () => {
+      try {
+        if (window.ethereum) {
+          const provider = new ethers.BrowserProvider(window.ethereum as any)
+          const accounts = await provider.listAccounts()
+          
+          if (accounts.length > 0) {
+            setIsConnected(true)
+            setAddress(accounts[0].address)
+            
+            const balance = await provider.getBalance(accounts[0].address)
+            setBalance(ethers.formatEther(balance))
+          } else {
+            setIsConnected(false)
+            setAddress(null)
+            setBalance(null)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to update wallet state:', error)
+      }
+    }
+
     checkConnection()
 
+    // Set up event listeners for wallet changes
     if (window.ethereum) {
-      (window.ethereum as any).on('accountsChanged', (accounts: string[]) => {
+      const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0) {
           setAddress(accounts[0])
           setIsConnected(true)
+          updateWalletState()
         } else {
           setAddress(null)
           setIsConnected(false)
           setBalance(null)
         }
-      })
+      }
 
-      (window.ethereum as any).on('chainChanged', () => {
-        window.location.reload()
-      })
-    }
+      const handleChainChanged = () => {
+        updateWalletState()
+      }
 
-    return () => {
-      if (window.ethereum) {
-        (window.ethereum as any).removeAllListeners('accountsChanged')
-        (window.ethereum as any).removeAllListeners('chainChanged')
+      (window.ethereum as any).on('accountsChanged', handleAccountsChanged)
+      (window.ethereum as any).on('chainChanged', handleChainChanged)
+
+      return () => {
+        if (window.ethereum) {
+          (window.ethereum as any).removeListener('accountsChanged', handleAccountsChanged)
+          (window.ethereum as any).removeListener('chainChanged', handleChainChanged)
+        }
       }
     }
   }, [])
 
   const connect = async () => {
     try {
-      if (window.ethereum) {
-        const provider = new ethers.BrowserProvider(window.ethereum as any)
-        await provider.send('eth_requestAccounts', [])
-        
-        const signer = await provider.getSigner()
-        const address = await signer.getAddress()
-        const balance = await provider.getBalance(address)
-        
-        setIsConnected(true)
-        setAddress(address)
-        setBalance(ethers.formatEther(balance))
-      }
+      // Open the Reown AppKit modal
+      await modal?.open()
     } catch (error) {
       console.error('Failed to connect wallet:', error)
     }
   }
 
   const disconnect = async () => {
-    setIsConnected(false)
-    setAddress(null)
-    setBalance(null)
+    try {
+      await modal?.disconnect()
+      setIsConnected(false)
+      setAddress(null)
+      setBalance(null)
+    } catch (error) {
+      console.error('Failed to disconnect wallet:', error)
+    }
+  }
+
+  const openModal = () => {
+    modal?.open()
   }
 
   return (
@@ -118,7 +171,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       address,
       balance,
       connect,
-      disconnect
+      disconnect,
+      openModal
     }}>
       {children}
     </WalletContext.Provider>
@@ -132,6 +186,9 @@ export function useWallet() {
   }
   return context
 }
+
+// Export the modal for direct use
+export { modal }
 
 declare global {
   interface Window {

@@ -85,6 +85,7 @@ function App() {
         <ThemeProvider>
           <GameStateProvider>
             <TooltipProvider>
+              <div id="appkit-container" />
               <Toaster />
               <Router />
             </TooltipProvider>
