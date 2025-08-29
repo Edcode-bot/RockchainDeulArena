@@ -31,6 +31,21 @@ export default function Landing() {
   const { toast } = useToast();
   const [countdown, setCountdown] = useState({ hours: 14, minutes: 32, seconds: 18 });
 
+  // Force repaint for MetaMask compatibility
+  useEffect(() => {
+    const handleLoad = () => {
+      document.body.style.background = 'linear-gradient(135deg, #f97316 0%, #16a34a 100%)';
+      document.documentElement.style.background = 'linear-gradient(135deg, #f97316 0%, #16a34a 100%)';
+    };
+    
+    handleLoad();
+    window.addEventListener('load', handleLoad);
+    
+    return () => {
+      window.removeEventListener('load', handleLoad);
+    };
+  }, []);
+
   useEffect(() => {
     if (isConnected) {
       setLocation("/dashboard");
@@ -174,7 +189,14 @@ export default function Landing() {
   ];
 
   return (
-    <div className="min-h-screen animated-bg">
+    <div 
+      className="min-h-screen animated-bg"
+      style={{
+        background: 'linear-gradient(135deg, #f97316 0%, #16a34a 100%)',
+        minHeight: '100vh',
+        width: '100%'
+      }}
+    >
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
