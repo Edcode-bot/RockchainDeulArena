@@ -4,13 +4,7 @@ import { useWallet } from "@/wallet/reown";
 import { Wallet } from "lucide-react";
 
 export function ConnectButton() {
-  const { isConnected, address, openModal } = useWallet();
-
-  if (isConnected && address) {
-    return (
-      <appkit-button />
-    );
-  }
+  const { openModal } = useWallet();
 
   return (
     <Button

@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { GameStateProvider } from "@/state/store";
-import { WalletProvider } from "@/wallet/reown";
+import { WalletProvider, useWallet } from "@/wallet/reown";
 
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
@@ -20,60 +20,36 @@ import NotFound from "@/pages/not-found";
 
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Router() {
   const [location] = useLocation();
-  const isLanding = location === "/";
+  const { isConnected } = useWallet();
+
+  // If not connected, only show Landing page
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen animated-bg">
+        <Landing />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen animated-bg">
-      {!isLanding && <Header />}
+      <Header />
       <Switch>
-        <Route path="/" component={Landing} />
-        <Route path="/dashboard">
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/rps">
-          <ProtectedRoute>
-            <RPS />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/tictactoe">
-          <ProtectedRoute>
-            <TicTacToe />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/guessnumber">
-          <ProtectedRoute>
-            <GuessNumber />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/coinflip">
-          <ProtectedRoute>
-            <CoinFlip />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/diceroll">
-          <ProtectedRoute>
-            <DiceRoll />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/profile">
-          <ProtectedRoute>
-            <Profile />
-          </ProtectedRoute>
-        </Route>
-        <Route path="/leaderboard">
-          <ProtectedRoute>
-            <Leaderboard />
-          </ProtectedRoute>
-        </Route>
+        <Route path="/" component={Dashboard} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/rps" component={RPS} />
+        <Route path="/tictactoe" component={TicTacToe} />
+        <Route path="/guessnumber" component={GuessNumber} />
+        <Route path="/coinflip" component={CoinFlip} />
+        <Route path="/diceroll" component={DiceRoll} />
+        <Route path="/profile" component={Profile} />
+        <Route path="/leaderboard" component={Leaderboard} />
         <Route component={NotFound} />
       </Switch>
-      {!isLanding && <BottomNav />}
+      <BottomNav />
     </div>
   );
 }

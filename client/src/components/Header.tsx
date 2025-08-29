@@ -2,24 +2,25 @@ import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/ThemeProvider";
 import { useWallet } from "@/wallet/reown";
-import { Moon, Sun, Globe, Menu, Dice1 } from "lucide-react";
-import { ConnectButton } from "@/components/ConnectButton";
+import { Moon, Sun, Globe, Menu, Dice1, LogOut, Wallet } from "lucide-react";
 
 export default function Header() {
   const [location] = useLocation();
   const { theme, language, toggleTheme, toggleLanguage } = useTheme();
-  const { address } = useWallet();
+  const { address, balance, disconnect } = useWallet();
 
   const translations = {
     en: {
       games: "Games",
       features: "Features",
       reviews: "Reviews",
+      disconnect: "Disconnect",
     },
     sw: {
       games: "Michezo",
       features: "Vipengele",
       reviews: "Maoni",
+      disconnect: "Ondoa",
     }
   };
 
@@ -76,9 +77,29 @@ export default function Header() {
               >
                 {theme === "dark" ? <Sun className="text-sm" /> : <Moon className="text-sm" />}
               </Button>
+              
+              {/* Wallet Info */}
               {address && (
-                <div className="text-sm bg-muted px-3 py-1 rounded-lg" data-testid="text-address">
-                  {address.slice(0, 6)}...{address.slice(-4)}
+                <div className="flex items-center space-x-2">
+                  {balance && (
+                    <div className="flex items-center space-x-1 text-sm bg-primary/20 text-primary px-3 py-1 rounded-lg">
+                      <Wallet className="text-xs" />
+                      <span>{parseFloat(balance).toFixed(3)} CELO</span>
+                    </div>
+                  )}
+                  <div className="text-sm bg-muted px-3 py-1 rounded-lg" data-testid="text-address">
+                    {address.slice(0, 6)}...{address.slice(-4)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={disconnect}
+                    data-testid="button-disconnect"
+                    className="p-2 rounded-lg bg-muted hover:bg-muted/80 text-red-500 hover:text-red-600"
+                    title={t.disconnect}
+                  >
+                    <LogOut className="text-sm" />
+                  </Button>
                 </div>
               )}
             </div>

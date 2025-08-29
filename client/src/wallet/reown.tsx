@@ -1,7 +1,7 @@
-
 import { createAppKit } from '@reown/appkit/react'
 import { EthersAdapter } from '@reown/appkit-adapter-ethers'
 import { celo } from '@reown/appkit/networks'
+import { useAppKitAccount, useAppKitProvider } from '@reown/appkit/react'
 import { ethers } from 'ethers'
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
@@ -46,120 +46,33 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType | undefined>(undefined)
 
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [isConnected, setIsConnected] = useState(false)
-  const [address, setAddress] = useState<string | null>(null)
+  const { address, isConnected } = useAppKitAccount()
+  const { walletProvider } = useAppKitProvider('eip155')
   const [balance, setBalance] = useState<string | null>(null)
 
+  // Update balance when wallet connects
   useEffect(() => {
-    const updateWalletState = async () => {
-      try {
-        if (window.ethereum) {
-          const provider = new ethers.BrowserProvider(window.ethereum as any)
-          const accounts = await provider.listAccounts()
-          
-          if (accounts.length > 0) {
-            setIsConnected(true)
-            setAddress(accounts[0].address)
-            
-            const balance = await provider.getBalance(accounts[0].address)
-            setBalance(ethers.formatEther(balance))
-          } else {
-            setIsConnected(false)
-            setAddress(null)
-            setBalance(null)
-          }
-        }
-      } catch (error) {
-        console.error('Failed to update wallet state:', error)
-      }
-    }
-
-    const checkConnection = async () => {
-      try {
-        // Listen to AppKit state changes
-        const unsubscribe = modal?.subscribeState((state: any) => {
-          console.log('AppKit state changed:', state)
-          
-          // Check if wallet is connected via AppKit
-          if (state.isConnected && state.address) {
-            setIsConnected(true)
-            setAddress(state.address)
-            // Update balance
-            if (window.ethereum) {
-              updateWalletState()
-            }
-          } else if (!state.isConnected) {
-            setIsConnected(false)
-            setAddress(null)
-            setBalance(null)
-          }
-        })
-
-        // Check initial connection state
-        const initialState = modal?.getState()
-        if (initialState?.isConnected && initialState?.address) {
-          setIsConnected(true)
-          setAddress(initialState.address)
-          updateWalletState()
-        }
-
-        // Also check for existing ethereum provider connection
-        await updateWalletState()
-
-        return unsubscribe
-      } catch (error) {
-        console.error('Failed to check wallet connection:', error)
-      }
-    }
-
-    const unsubscribe = checkConnection()
-
-    // Set up event listeners for wallet changes
-    if (window.ethereum) {
-      const handleAccountsChanged = (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAddress(accounts[0])
-          setIsConnected(true)
-          updateWalletState()
-        } else {
-          setAddress(null)
-          setIsConnected(false)
+    const updateBalance = async () => {
+      if (isConnected && address && walletProvider) {
+        try {
+          const provider = new ethers.BrowserProvider(walletProvider)
+          const balance = await provider.getBalance(address)
+          setBalance(ethers.formatEther(balance))
+        } catch (error) {
+          console.error('Failed to fetch balance:', error)
           setBalance(null)
         }
-      }
-
-      const handleChainChanged = () => {
-        updateWalletState()
-      }
-
-      (window.ethereum as any).on('accountsChanged', handleAccountsChanged)
-      (window.ethereum as any).on('chainChanged', handleChainChanged)
-
-      return () => {
-        if (window.ethereum) {
-          (window.ethereum as any).removeListener('accountsChanged', handleAccountsChanged)
-          (window.ethereum as any).removeListener('chainChanged', handleChainChanged)
-        }
-        if (typeof unsubscribe === 'function') {
-          unsubscribe()
-        }
+      } else {
+        setBalance(null)
       }
     }
 
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe()
-      }
-    }
-  }, [])
+    updateBalance()
+  }, [isConnected, address, walletProvider])
 
   const connect = async () => {
     try {
-      // Open the Reown AppKit modal
       await modal?.open()
-      
-      // The connection state will be handled by the subscribeState listener
-      // No need to manually update state here as it will be done automatically
     } catch (error) {
       console.error('Failed to connect wallet:', error)
     }
@@ -168,9 +81,6 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const disconnect = async () => {
     try {
       await modal?.disconnect()
-      setIsConnected(false)
-      setAddress(null)
-      setBalance(null)
     } catch (error) {
       console.error('Failed to disconnect wallet:', error)
     }

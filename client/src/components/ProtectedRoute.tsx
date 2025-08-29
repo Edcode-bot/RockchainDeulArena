@@ -1,24 +1,10 @@
-import { useEffect } from "react";
-import { useLocation } from "wouter";
-import { useWallet } from "@/wallet/reown";
+import { ReactNode } from "react";
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isConnected } = useWallet();
-  const [, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (!isConnected) {
-      setLocation("/");
-    }
-  }, [isConnected, setLocation]);
-
-  if (!isConnected) {
-    return null;
-  }
-
+  // No longer needed as protection is handled at App level
   return <>{children}</>;
 }
