@@ -1,5 +1,4 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -26,42 +25,17 @@ function Router() {
   const [location] = useLocation();
   const { isConnected } = useWallet();
 
-  // Force repaint on wallet connection change
-  useEffect(() => {
-    if (isConnected) {
-      // Force a repaint to fix any rendering issues
-      document.body.style.transform = 'translateZ(0)';
-      setTimeout(() => {
-        document.body.style.transform = '';
-      }, 100);
-    }
-  }, [isConnected]);
-
   // If not connected, only show Landing page
   if (!isConnected) {
     return (
-      <div 
-        className="min-h-screen animated-bg"
-        style={{
-          background: 'linear-gradient(135deg, #f97316 0%, #16a34a 100%)',
-          minHeight: '100vh',
-          width: '100%'
-        }}
-      >
+      <div className="min-h-screen animated-bg">
         <Landing />
       </div>
     );
   }
 
   return (
-    <div 
-      className="min-h-screen animated-bg"
-      style={{
-        background: 'linear-gradient(135deg, #f97316 0%, #16a34a 100%)',
-        minHeight: '100vh',
-        width: '100%'
-      }}
-    >
+    <div className="min-h-screen animated-bg">
       <Header />
       <Switch>
         <Route path="/" component={Dashboard} />
