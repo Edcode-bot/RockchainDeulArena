@@ -1,6 +1,6 @@
 
 import { getReferralTag, submitReferral } from '@divvi/referral-sdk';
-import { createWalletClient, custom, parseEther, encodeFunctionData } from 'viem';
+import { createWalletClient, custom, parseEther, encodeFunctionData, concat, toHex } from 'viem';
 import { celo } from 'viem/chains';
 
 // Contract ABI for basic functions
@@ -42,21 +42,31 @@ export async function placeBetTransaction(
     });
 
     // Encode the function call
-    const data = encodeFunctionData({
+    const functionData = encodeFunctionData({
       abi: GAME_CONTRACT_ABI,
       functionName: 'placeBet',
       args: [gameType, prediction]
     });
 
-    // Add referral tag
+    // Get referral tag
     const referralTag = getReferralTag({
       user: account,
       consumer: DIVVI_CONSUMER_ADDRESS,
     });
 
+    // Properly concatenate function data with referral tag using viem's concat
+    const finalData = concat([
+      functionData as `0x${string}`,
+      referralTag as `0x${string}`
+    ]);
+
+    console.log('Function data:', functionData);
+    console.log('Referral tag:', referralTag);
+    console.log('Final data:', finalData);
+
     const txData = {
-      to: GAME_CONTRACT_ADDRESS,
-      data: data + referralTag.slice(2), // Remove 0x prefix from referral tag
+      to: GAME_CONTRACT_ADDRESS as `0x${string}`,
+      data: finalData,
       value: parseEther(betAmount),
       account: account as `0x${string}`
     };
@@ -82,21 +92,31 @@ export async function mintNFTTransaction(account: string) {
     });
 
     // Encode the function call
-    const data = encodeFunctionData({
+    const functionData = encodeFunctionData({
       abi: GAME_CONTRACT_ABI,
       functionName: 'mintWinnerNFT',
       args: [account as `0x${string}`]
     });
 
-    // Add referral tag
+    // Get referral tag
     const referralTag = getReferralTag({
       user: account,
       consumer: DIVVI_CONSUMER_ADDRESS,
     });
 
+    // Properly concatenate function data with referral tag using viem's concat
+    const finalData = concat([
+      functionData as `0x${string}`,
+      referralTag as `0x${string}`
+    ]);
+
+    console.log('NFT Function data:', functionData);
+    console.log('NFT Referral tag:', referralTag);
+    console.log('NFT Final data:', finalData);
+
     const txData = {
-      to: GAME_CONTRACT_ADDRESS,
-      data: data + referralTag.slice(2), // Remove 0x prefix from referral tag
+      to: GAME_CONTRACT_ADDRESS as `0x${string}`,
+      data: finalData,
       value: 0n,
       account: account as `0x${string}`
     };

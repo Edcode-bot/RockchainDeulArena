@@ -52,11 +52,13 @@ export default function CoinFlip() {
         description: "Confirm the transaction in your wallet",
       });
 
+      console.log('Placing bet:', { gameType: 1, prediction, choice, address });
       const betTxHash = await placeBetTransaction(address, 1, prediction, '0.01');
       
+      console.log('Bet transaction successful:', betTxHash);
       toast({
         title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+        description: `Transaction: ${betTxHash.slice(0, 10)}... - Check Celo Explorer`,
       });
 
       // Simulate coin flip animation
@@ -85,14 +87,21 @@ export default function CoinFlip() {
               description: "Confirm the NFT mint transaction",
             });
 
+            console.log('Minting NFT for winner:', address);
             const mintTxHash = await mintNFTTransaction(address);
+            console.log('NFT mint transaction successful:', mintTxHash);
             
             toast({
               title: "Perfect Call! 🎉",
-              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
+              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}... - Check Celo Explorer`,
             });
           } catch (error: any) {
             console.error('NFT mint failed:', error);
+            console.error('NFT mint error details:', {
+              message: error.message,
+              code: error.code,
+              data: error.data
+            });
             toast({
               title: "Win recorded, NFT mint failed",
               description: error.message || "NFT minting transaction failed",
@@ -112,6 +121,12 @@ export default function CoinFlip() {
 
     } catch (error: any) {
       console.error('Bet transaction failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        data: error.data,
+        stack: error.stack
+      });
       setIsFlipping(false);
       setIsProcessingTx(false);
       
