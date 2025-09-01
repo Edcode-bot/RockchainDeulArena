@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
@@ -8,117 +9,153 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw } from "lucide-react";
-import { addDivviReferral } from "@/utils/divvi";
+import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
 
 type Choice = 'rock' | 'paper' | 'scissors';
-type GameResult = 'win' | 'lose' | 'tie' | null;
+type GameResult = 'win' | 'lose' | 'draw' | null;
+
+const choices: Choice[] = ['rock', 'paper', 'scissors'];
+const emojis: Record<Choice, string> = {
+  rock: '🪨',
+  paper: '📄', 
+  scissors: '✂️'
+};
+
+const getWinner = (player: Choice, computer: Choice): GameResult => {
+  if (player === computer) return 'draw';
+  if (
+    (player === 'rock' && computer === 'scissors') ||
+    (player === 'paper' && computer === 'rock') ||
+    (player === 'scissors' && computer === 'paper')
+  ) {
+    return 'win';
+  }
+  return 'lose';
+};
 
 export default function RPS() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
-  const { address } = useWallet();
+  const { address, isConnected } = useWallet();
   const [playerChoice, setPlayerChoice] = useState<Choice | null>(null);
-  const [aiChoice, setAiChoice] = useState<Choice | null>(null);
+  const [computerChoice, setComputerChoice] = useState<Choice | null>(null);
   const [result, setResult] = useState<GameResult>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [score, setScore] = useState({ player: 0, ai: 0 });
-  const [round, setRound] = useState(1);
-
-  const choices: { value: Choice; emoji: string; name: string }[] = [
-    { value: 'rock', emoji: '🪨', name: 'Rock' },
-    { value: 'paper', emoji: '📄', name: 'Paper' },
-    { value: 'scissors', emoji: '✂️', name: 'Scissors' },
-  ];
-
-  const getRandomChoice = (): Choice => {
-    const choices: Choice[] = ['rock', 'paper', 'scissors'];
-    return choices[Math.floor(Math.random() * choices.length)];
-  };
-
-  const determineWinner = (player: Choice, ai: Choice): GameResult => {
-    if (player === ai) return 'tie';
-    
-    const winConditions = {
-      rock: 'scissors',
-      paper: 'rock',
-      scissors: 'paper'
-    };
-    
-    return winConditions[player] === ai ? 'win' : 'lose';
-  };
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [showResult, setShowResult] = useState(false);
+  const [isProcessingTx, setIsProcessingTx] = useState(false);
 
   const handleChoice = async (choice: Choice) => {
-    if (isPlaying) return;
-    
-    setIsPlaying(true);
-    setPlayerChoice(choice);
-    playSound('click');
-    
-    // Simulate AI thinking
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const ai = getRandomChoice();
-    setAiChoice(ai);
-    
-    const gameResult = determineWinner(choice, ai);
-    setResult(gameResult);
-    
-    const newScore = { ...score };
-    if (gameResult === 'win') {
-      newScore.player++;
-    } else if (gameResult === 'lose') {
-      newScore.ai++;
-    }
-    setScore(newScore);
-    
-    // Check if game is complete (best of 3)
-    if (newScore.player === 2 || newScore.ai === 2) {
-      const finalResult = newScore.player === 2 ? 'win' : 'lose';
-      
-      if (finalResult === 'win') {
-        dispatch({ type: 'WIN_GAME', payload: { gameType: 'rps' } });
-        playSound('win');
-        
-        // Track referral for NFT mint transaction
-        if (address && window.ethereum) {
-          try {
-            const txData = { 
-              to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-              data: '0x40c10f19', // mint function selector
-              value: 0n 
-            };
-            await addDivviReferral(txData, address);
-          } catch (error) {
-            console.error('Divvi referral tracking failed:', error);
-          }
-        }
-        
+    if (isRevealing || !isConnected || !address) {
+      if (!isConnected) {
         toast({
-          title: "Victory! 🎉",
-          description: "You earned 10 points and an NFT!",
-        });
-      } else {
-        toast({
-          title: "Game Over",
-          description: "Better luck next time!",
+          title: "Wallet not connected",
+          description: "Please connect your wallet to play",
           variant: "destructive",
         });
       }
+      return;
     }
     
-    setIsPlaying(false);
+    setPlayerChoice(choice);
+    setIsRevealing(true);
+    setShowResult(false);
+    setIsProcessingTx(true);
+    playSound('click');
+    
+    try {
+      // Place bet transaction (gameType: 0 for RPS, prediction: 0=rock, 1=paper, 2=scissors)
+      const prediction = choices.indexOf(choice);
+      
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
+
+      const betTxHash = await placeBetTransaction(address, 0, prediction, '0.01');
+      
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+      });
+
+      // Simulate computer choice animation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const compChoice = choices[Math.floor(Math.random() * choices.length)];
+      setComputerChoice(compChoice);
+      setIsRevealing(false);
+      
+      // Determine winner
+      const gameResult = getWinner(choice, compChoice);
+      setResult(gameResult);
+      
+      setTimeout(async () => {
+        setShowResult(true);
+        
+        if (gameResult === 'win') {
+          dispatch({ type: 'WIN_GAME', payload: { gameType: 'rps' } });
+          playSound('win');
+          
+          try {
+            // Mint NFT transaction
+            toast({
+              title: "Minting NFT...",
+              description: "Confirm the NFT mint transaction",
+            });
+
+            const mintTxHash = await mintNFTTransaction(address);
+            
+            toast({
+              title: "Victory! 🎉",
+              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
+            });
+          } catch (error: any) {
+            console.error('NFT mint failed:', error);
+            toast({
+              title: "Win recorded, NFT mint failed",
+              description: error.message || "NFT minting transaction failed",
+              variant: "destructive",
+            });
+          }
+        } else if (gameResult === 'draw') {
+          toast({
+            title: "It's a Draw!",
+            description: "Try again for the win!",
+          });
+        } else {
+          toast({
+            title: "You Lost!",
+            description: "Better luck next time!",
+            variant: "destructive",
+          });
+        }
+        
+        setIsProcessingTx(false);
+      }, 1000);
+
+    } catch (error: any) {
+      console.error('Bet transaction failed:', error);
+      setIsRevealing(false);
+      setIsProcessingTx(false);
+      
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
+        variant: "destructive",
+      });
+      
+      resetGame();
+    }
   };
 
   const resetGame = () => {
     setPlayerChoice(null);
-    setAiChoice(null);
+    setComputerChoice(null);
     setResult(null);
-    setScore({ player: 0, ai: 0 });
-    setRound(1);
-    setIsPlaying(false);
+    setIsRevealing(false);
+    setShowResult(false);
+    setIsProcessingTx(false);
   };
-
-  const isGameComplete = score.player === 2 || score.ai === 2;
 
   return (
     <div className="min-h-screen pb-20 md:pb-8">
@@ -139,7 +176,7 @@ export default function RPS() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Rock Paper Scissors</h1>
-              <p className="text-muted-foreground">Best of 3 rounds</p>
+              <p className="text-muted-foreground">Beat the computer! (0.01 cUSD bet)</p>
             </div>
           </div>
           
@@ -147,14 +184,35 @@ export default function RPS() {
             onClick={resetGame}
             variant="outline"
             size="sm"
+            disabled={isProcessingTx}
             data-testid="button-reset"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
-            Reset
+            New Game
           </Button>
         </motion.div>
 
-        {/* Score */}
+        {/* Wallet Status */}
+        {!isConnected && (
+          <motion.div 
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-yellow-500 text-yellow-500">
+                    ⚠️ Connect Wallet to Play
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Game Status */}
         <motion.div 
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -163,26 +221,38 @@ export default function RPS() {
         >
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">You</p>
-                  <p className="text-3xl font-bold text-primary" data-testid="text-player-score">{score.player}</p>
-                </div>
-                <div className="text-center">
-                  <Badge variant="outline" className="text-lg px-4 py-2">
-                    Round {Math.max(score.player + score.ai + (result ? 0 : 1), 1)}
+              <div className="text-center">
+                {isProcessingTx && (
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-blue-500 text-blue-500">
+                    🔄 Processing Transaction...
                   </Badge>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">AI</p>
-                  <p className="text-3xl font-bold text-destructive" data-testid="text-ai-score">{score.ai}</p>
-                </div>
+                )}
+                {!isProcessingTx && showResult && result ? (
+                  <Badge 
+                    variant={result === 'win' ? 'default' : result === 'draw' ? 'secondary' : 'destructive'}
+                    className="text-lg px-4 py-2"
+                  >
+                    {result === 'win' ? "🎉 You Won!" : result === 'draw' ? "🤝 Draw!" : "😔 You Lost!"}
+                  </Badge>
+                ) : !isProcessingTx && isRevealing ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    🤖 Computer is choosing...
+                  </Badge>
+                ) : !isProcessingTx && playerChoice ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    You chose: {emojis[playerChoice]} {playerChoice}
+                  </Badge>
+                ) : !isProcessingTx ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    Choose your move!
+                  </Badge>
+                ) : null}
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Game Area */}
+        {/* Game Arena */}
         <motion.div 
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -191,86 +261,71 @@ export default function RPS() {
         >
           <Card>
             <CardHeader>
-              <CardTitle className="text-center">
-                {isGameComplete 
-                  ? (score.player === 2 ? "🎉 You Won!" : "😔 AI Won!")
-                  : isPlaying 
-                    ? "AI is thinking..." 
-                    : "Choose your weapon!"
-                }
-              </CardTitle>
+              <CardTitle className="text-center">Battle Arena</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-8 mb-8">
+              <div className="grid grid-cols-3 gap-8 mb-8">
                 {/* Player Side */}
                 <div className="text-center">
-                  <h3 className="text-lg font-semibold mb-4">Your Choice</h3>
+                  <h3 className="text-lg font-semibold mb-4">You</h3>
                   <motion.div 
-                    className="w-24 h-24 mx-auto bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center text-4xl mb-4"
-                    animate={playerChoice ? { scale: [1, 1.2, 1] } : {}}
-                    transition={{ duration: 0.5 }}
+                    className="w-24 h-24 mx-auto bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center text-4xl border-2 border-primary/30"
+                    animate={isRevealing ? { scale: [1, 1.1, 1] } : {}}
+                    transition={{ duration: 0.5, repeat: isRevealing ? Infinity : 0 }}
                   >
-                    {playerChoice ? choices.find(c => c.value === playerChoice)?.emoji : "❓"}
+                    {playerChoice ? emojis[playerChoice] : '❓'}
                   </motion.div>
-                  <p className="text-sm text-muted-foreground">
-                    {playerChoice ? choices.find(c => c.value === playerChoice)?.name : "Make your choice"}
-                  </p>
+                  {playerChoice && (
+                    <p className="mt-2 font-medium capitalize">{playerChoice}</p>
+                  )}
                 </div>
 
-                {/* AI Side */}
-                <div className="text-center">
-                  <h3 className="text-lg font-semibold mb-4">AI Choice</h3>
+                {/* VS */}
+                <div className="text-center flex items-center justify-center">
                   <motion.div 
-                    className="w-24 h-24 mx-auto bg-gradient-to-br from-destructive to-orange-500 rounded-full flex items-center justify-center text-4xl mb-4"
-                    animate={isPlaying ? { rotate: 360 } : aiChoice ? { scale: [1, 1.2, 1] } : {}}
-                    transition={{ duration: isPlaying ? 1 : 0.5, repeat: isPlaying ? Infinity : 0 }}
+                    className="text-2xl font-bold"
+                    animate={isRevealing ? { rotate: [0, 180, 360] } : {}}
+                    transition={{ duration: 1, repeat: isRevealing ? Infinity : 0 }}
                   >
-                    {isPlaying ? "🤔" : aiChoice ? choices.find(c => c.value === aiChoice)?.emoji : "❓"}
+                    ⚔️
                   </motion.div>
-                  <p className="text-sm text-muted-foreground">
-                    {isPlaying ? "Thinking..." : aiChoice ? choices.find(c => c.value === aiChoice)?.name : "Waiting..."}
-                  </p>
+                </div>
+
+                {/* Computer Side */}
+                <div className="text-center">
+                  <h3 className="text-lg font-semibold mb-4">Computer</h3>
+                  <motion.div 
+                    className="w-24 h-24 mx-auto bg-gradient-to-br from-secondary/20 to-destructive/20 rounded-full flex items-center justify-center text-4xl border-2 border-secondary/30"
+                    animate={isRevealing ? { scale: [1, 1.1, 1] } : {}}
+                    transition={{ duration: 0.5, repeat: isRevealing ? Infinity : 0 }}
+                  >
+                    {computerChoice ? emojis[computerChoice] : '🤖'}
+                  </motion.div>
+                  {computerChoice && (
+                    <p className="mt-2 font-medium capitalize">{computerChoice}</p>
+                  )}
                 </div>
               </div>
 
-              {/* Result */}
-              {result && !isGameComplete && (
-                <motion.div 
-                  className="text-center mb-6"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <Badge 
-                    variant={result === 'win' ? 'default' : result === 'lose' ? 'destructive' : 'secondary'}
-                    className="text-lg px-4 py-2"
-                  >
-                    {result === 'win' ? "You Win This Round!" : 
-                     result === 'lose' ? "AI Wins This Round!" : 
-                     "It's a Tie!"}
-                  </Badge>
-                </motion.div>
-              )}
-
               {/* Choice Buttons */}
-              {!isGameComplete && (
-                <div className="grid grid-cols-3 gap-4">
+              {!showResult && isConnected && (
+                <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto">
                   {choices.map((choice, index) => (
                     <motion.div
-                      key={choice.value}
+                      key={choice}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
                     >
                       <Button
-                        onClick={() => handleChoice(choice.value)}
-                        disabled={isPlaying}
+                        onClick={() => handleChoice(choice)}
+                        disabled={isRevealing || isProcessingTx}
                         variant="outline"
                         className="w-full h-20 text-lg flex flex-col space-y-2 hover:scale-105 transition-transform"
-                        data-testid={`button-${choice.value}`}
+                        data-testid={`button-${choice}`}
                       >
-                        <span className="text-2xl">{choice.emoji}</span>
-                        <span>{choice.name}</span>
+                        <span className="text-3xl">{emojis[choice]}</span>
+                        <span className="capitalize">{choice}</span>
                       </Button>
                     </motion.div>
                   ))}
@@ -278,9 +333,9 @@ export default function RPS() {
               )}
 
               {/* Play Again Button */}
-              {isGameComplete && (
+              {showResult && !isProcessingTx && (
                 <motion.div 
-                  className="text-center"
+                  className="text-center mt-6"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.5, delay: 0.5 }}
@@ -310,11 +365,12 @@ export default function RPS() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Rock beats Scissors</p>
-                <p>• Paper beats Rock</p>
-                <p>• Scissors beats Paper</p>
-                <p>• First to win 2 rounds wins the game</p>
-                <p>• Win the game to earn 10 points and an NFT!</p>
+                <p>• Connect your wallet to place bets</p>
+                <p>• Choose Rock (🪨), Paper (📄), or Scissors (✂️)</p>
+                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
+                <p>• Rock beats Scissors, Scissors beats Paper, Paper beats Rock</p>
+                <p>• Win to earn 10 points and an NFT!</p>
+                <p>• All transactions are real and recorded on Celo blockchain</p>
               </div>
             </CardContent>
           </Card>

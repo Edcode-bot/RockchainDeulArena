@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
@@ -8,177 +9,193 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Grid3x3 } from "lucide-react";
-import { addDivviReferral } from "@/utils/divvi";
+import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
 
 type Cell = 'X' | 'O' | null;
 type Board = Cell[];
-type GameResult = 'win' | 'lose' | 'tie' | null;
+
+const initialBoard: Board = Array(9).fill(null);
+
+const checkWinner = (board: Board): 'X' | 'O' | 'draw' | null => {
+  const lines = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
+    [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
+    [0, 4, 8], [2, 4, 6] // diagonals
+  ];
+
+  for (const [a, b, c] of lines) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return board[a];
+    }
+  }
+
+  return board.every(cell => cell !== null) ? 'draw' : null;
+};
+
+const getBestMove = (board: Board): number => {
+  // Simple AI: try to win, then block, then random
+  const availableMoves = board.map((cell, index) => cell === null ? index : null).filter(val => val !== null) as number[];
+  
+  // Try to win
+  for (const move of availableMoves) {
+    const testBoard = [...board];
+    testBoard[move] = 'O';
+    if (checkWinner(testBoard) === 'O') return move;
+  }
+  
+  // Try to block
+  for (const move of availableMoves) {
+    const testBoard = [...board];
+    testBoard[move] = 'X';
+    if (checkWinner(testBoard) === 'X') return move;
+  }
+  
+  // Random move
+  return availableMoves[Math.floor(Math.random() * availableMoves.length)];
+};
 
 export default function TicTacToe() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
-  const [board, setBoard] = useState<Board>(Array(9).fill(null));
+  const { address, isConnected } = useWallet();
+  const [board, setBoard] = useState<Board>(initialBoard);
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
-  const [result, setResult] = useState<GameResult>(null);
-  const [isThinking, setIsThinking] = useState(false);
-  const { address } = useWallet();
-
-
-  const checkWinner = (board: Board): 'X' | 'O' | 'tie' | null => {
-    const winPatterns = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
-      [0, 4, 8], [2, 4, 6] // diagonals
-    ];
-
-    for (const pattern of winPatterns) {
-      const [a, b, c] = pattern;
-      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-        return board[a];
-      }
-    }
-
-    return board.every(cell => cell !== null) ? 'tie' : null;
-  };
-
-  const getBestMove = (board: Board): number => {
-    // Simple AI that tries to win, block, or take center/corners
-    const available = board.map((cell, index) => cell === null ? index : null).filter(val => val !== null) as number[];
-
-    // Try to win
-    for (const move of available) {
-      const testBoard = [...board];
-      testBoard[move] = 'O';
-      if (checkWinner(testBoard) === 'O') {
-        return move;
-      }
-    }
-
-    // Try to block player win
-    for (const move of available) {
-      const testBoard = [...board];
-      testBoard[move] = 'X';
-      if (checkWinner(testBoard) === 'X') {
-        return move;
-      }
-    }
-
-    // Take center if available
-    if (available.includes(4)) {
-      return 4;
-    }
-
-    // Take corners
-    const corners = [0, 2, 6, 8].filter(i => available.includes(i));
-    if (corners.length > 0) {
-      return corners[Math.floor(Math.random() * corners.length)];
-    }
-
-    // Take any available
-    return available[Math.floor(Math.random() * available.length)];
-  };
+  const [gameResult, setGameResult] = useState<'win' | 'lose' | 'draw' | null>(null);
+  const [isComputerThinking, setIsComputerThinking] = useState(false);
+  const [isProcessingTx, setIsProcessingTx] = useState(false);
 
   const handleCellClick = async (index: number) => {
-    if (board[index] || !isPlayerTurn || result || isThinking) return;
-
-    playSound('click');
-    const newBoard = [...board];
-    newBoard[index] = 'X';
-    setBoard(newBoard);
-    setIsPlayerTurn(false);
-
-    const winner = checkWinner(newBoard);
-    if (winner) {
-      handleGameEnd(winner);
+    if (board[index] || !isPlayerTurn || gameResult || !isConnected || !address || isProcessingTx) {
+      if (!isConnected) {
+        toast({
+          title: "Wallet not connected",
+          description: "Please connect your wallet to play",
+          variant: "destructive",
+        });
+      }
       return;
     }
 
-    // AI turn
-    setIsThinking(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsProcessingTx(true);
+    playSound('click');
 
-    const aiMove = getBestMove(newBoard);
-    newBoard[aiMove] = 'O';
-    setBoard(newBoard);
-    setIsThinking(false);
+    try {
+      // Place bet transaction (gameType: 2 for TicTacToe, prediction: cell index)
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
 
-    const finalWinner = checkWinner(newBoard);
-    if (finalWinner) {
-      handleGameEnd(finalWinner);
-    } else {
-      setIsPlayerTurn(true);
-    }
-  };
+      const betTxHash = await placeBetTransaction(address, 2, index, '0.01');
+      
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+      });
 
-  const handleGameEnd = (winner: 'X' | 'O' | 'tie') => {
-    let gameResult: GameResult;
+      // Make player move
+      const newBoard = [...board];
+      newBoard[index] = 'X';
+      setBoard(newBoard);
+      setIsPlayerTurn(false);
 
-    if (winner === 'X') {
-      dispatch({ type: 'WIN_GAME', payload: { gameType: 'ttt' } });
-      playSound('win');
+      // Check for win/draw after player move
+      const result = checkWinner(newBoard);
+      if (result) {
+        if (result === 'X') {
+          setGameResult('win');
+          dispatch({ type: 'WIN_GAME', payload: { gameType: 'tictactoe' } });
+          playSound('win');
+          
+          try {
+            // Mint NFT transaction
+            toast({
+              title: "Minting NFT...",
+              description: "Confirm the NFT mint transaction",
+            });
 
-      // Track referral for NFT mint transaction
-      if (address && window.ethereum) {
-        try {
-          const txData = {
-            to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-            data: '0x40c10f19', // mint function selector
-            value: 0n
-          };
-          addDivviReferral(txData, address).catch(error =>
-            console.error('Divvi referral tracking failed:', error)
-          );
-        } catch (error) {
-          console.error('Divvi referral tracking failed:', error);
+            const mintTxHash = await mintNFTTransaction(address);
+            
+            toast({
+              title: "Victory! 🎉",
+              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
+            });
+          } catch (error: any) {
+            console.error('NFT mint failed:', error);
+            toast({
+              title: "Win recorded, NFT mint failed",
+              description: error.message || "NFT minting transaction failed",
+              variant: "destructive",
+            });
+          }
+        } else {
+          setGameResult('draw');
+          toast({
+            title: "It's a Draw!",
+            description: "Good game! Try again for the win!",
+          });
         }
+        setIsProcessingTx(false);
+        return;
       }
 
+      // Computer turn
+      setIsComputerThinking(true);
+      setTimeout(() => {
+        const computerMove = getBestMove(newBoard);
+        const computerBoard = [...newBoard];
+        computerBoard[computerMove] = 'O';
+        setBoard(computerBoard);
+        setIsComputerThinking(false);
+
+        // Check for win/draw after computer move
+        const computerResult = checkWinner(computerBoard);
+        if (computerResult) {
+          if (computerResult === 'O') {
+            setGameResult('lose');
+            toast({
+              title: "Computer Wins!",
+              description: "Better luck next time!",
+              variant: "destructive",
+            });
+          } else {
+            setGameResult('draw');
+            toast({
+              title: "It's a Draw!",
+              description: "Good game! Try again for the win!",
+            });
+          }
+        } else {
+          setIsPlayerTurn(true);
+        }
+        setIsProcessingTx(false);
+      }, 1000);
+
+    } catch (error: any) {
+      console.error('Bet transaction failed:', error);
+      setIsProcessingTx(false);
+      
       toast({
-        title: "Victory! 🎉",
-        description: "You earned 10 points and an NFT!",
-      });
-    } else if (winner === 'O') {
-      gameResult = 'lose';
-      toast({
-        title: "AI Wins!",
-        description: "Better luck next time!",
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
         variant: "destructive",
       });
-    } else {
-      gameResult = 'tie';
-      toast({
-        title: "It's a Draw!",
-        description: "Great game! Try again for the win!",
-        variant: "secondary",
-      });
     }
-
-    setResult(gameResult);
   };
 
   const resetGame = () => {
-    setBoard(Array(9).fill(null));
+    setBoard(initialBoard);
     setIsPlayerTurn(true);
-    setResult(null);
-    setIsThinking(false);
-  };
-
-  const isDraw = (board: Board): boolean => {
-    return board.every(cell => cell !== null) && checkWinner(board) === 'tie';
-  };
-
-
-  const getCellContent = (cell: Cell, index: number) => {
-    if (cell === 'X') return <span className="text-primary text-2xl font-bold">X</span>;
-    if (cell === 'O') return <span className="text-destructive text-2xl font-bold">O</span>;
-    return null;
+    setGameResult(null);
+    setIsComputerThinking(false);
+    setIsProcessingTx(false);
   };
 
   return (
     <div className="min-h-screen pb-20 md:pb-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         {/* Header */}
-        <motion.div
+        <motion.div 
           className="flex items-center justify-between mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -193,23 +210,44 @@ export default function TicTacToe() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Tic Tac Toe</h1>
-              <p className="text-muted-foreground">Beat the AI to win!</p>
+              <p className="text-muted-foreground">Beat the AI! (0.01 cUSD bet per move)</p>
             </div>
           </div>
-
-          <Button
+          
+          <Button 
             onClick={resetGame}
             variant="outline"
             size="sm"
+            disabled={isProcessingTx}
             data-testid="button-reset"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
-            Reset
+            New Game
           </Button>
         </motion.div>
 
+        {/* Wallet Status */}
+        {!isConnected && (
+          <motion.div 
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-yellow-500 text-yellow-500">
+                    ⚠️ Connect Wallet to Play
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Game Status */}
-        <motion.div
+        <motion.div 
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -218,63 +256,98 @@ export default function TicTacToe() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                {result ? (
-                  <Badge
-                    variant={result === 'win' ? 'default' : result === 'lose' ? 'destructive' : 'secondary'}
-                    className="text-lg px-4 py-2"
-                  >
-                    {result === 'win' ? "🎉 You Won!" :
-                     result === 'lose' ? "😔 AI Won!" :
-                     "🤝 It's a Tie!"}
-                  </Badge>
-                ) : isThinking ? (
-                  <Badge variant="outline" className="text-lg px-4 py-2">
-                    🤔 AI is thinking...
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-lg px-4 py-2">
-                    {isPlayerTurn ? "Your turn (X)" : "AI's turn (O)"}
+                {isProcessingTx && (
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-blue-500 text-blue-500">
+                    🔄 Processing Transaction...
                   </Badge>
                 )}
+                {!isProcessingTx && gameResult ? (
+                  <Badge 
+                    variant={gameResult === 'win' ? 'default' : gameResult === 'draw' ? 'secondary' : 'destructive'}
+                    className="text-lg px-4 py-2"
+                  >
+                    {gameResult === 'win' ? "🎉 You Won!" : gameResult === 'draw' ? "🤝 Draw!" : "😔 You Lost!"}
+                  </Badge>
+                ) : !isProcessingTx && isComputerThinking ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    🤖 Computer is thinking...
+                  </Badge>
+                ) : !isProcessingTx && isPlayerTurn ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    Your turn! (X)
+                  </Badge>
+                ) : !isProcessingTx ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    Computer's turn (O)
+                  </Badge>
+                ) : null}
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
         {/* Game Board */}
-        <motion.div
+        <motion.div 
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
           <Card>
-            <CardContent className="pt-6">
-              <div className="max-w-md mx-auto">
-                <div className="grid grid-cols-3 gap-2 mb-6">
+            <CardHeader>
+              <CardTitle className="text-center flex items-center justify-center space-x-2">
+                <Grid3x3 className="h-6 w-6" />
+                <span>Game Board</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="max-w-sm mx-auto">
+                <div className="grid grid-cols-3 gap-2 aspect-square">
                   {board.map((cell, index) => (
                     <motion.button
                       key={index}
                       onClick={() => handleCellClick(index)}
-                      disabled={!isPlayerTurn || !!result || isThinking || cell !== null}
-                      className="aspect-square bg-muted hover:bg-muted/80 rounded-lg flex items-center justify-center text-2xl font-bold border border-border disabled:cursor-not-allowed transition-all"
-                      whileHover={cell === null && isPlayerTurn && !result && !isThinking ? { scale: 1.05 } : {}}
-                      whileTap={cell === null && isPlayerTurn && !result && !isThinking ? { scale: 0.95 } : {}}
+                      disabled={!isConnected || !isPlayerTurn || !!cell || !!gameResult || isProcessingTx}
+                      className="aspect-square bg-gradient-to-br from-primary/10 to-accent/10 border-2 border-primary/20 rounded-lg flex items-center justify-center text-4xl font-bold hover:border-primary/40 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                      whileHover={!cell && isPlayerTurn && isConnected ? { scale: 1.05 } : {}}
+                      whileTap={!cell && isPlayerTurn && isConnected ? { scale: 0.95 } : {}}
                       data-testid={`cell-${index}`}
                     >
-                      {getCellContent(cell, index)}
+                      {cell && (
+                        <motion.span
+                          initial={{ scale: 0, rotate: -180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className={cell === 'X' ? 'text-primary' : 'text-destructive'}
+                        >
+                          {cell}
+                        </motion.span>
+                      )}
                     </motion.button>
                   ))}
                 </div>
 
-                {result && (
-                  <motion.div
-                    className="text-center"
+                {/* Player vs Computer Info */}
+                <div className="mt-6 grid grid-cols-2 gap-4 text-center">
+                  <div className="p-3 bg-primary/10 rounded-lg">
+                    <div className="text-2xl font-bold text-primary">X</div>
+                    <div className="text-sm text-muted-foreground">You</div>
+                  </div>
+                  <div className="p-3 bg-destructive/10 rounded-lg">
+                    <div className="text-2xl font-bold text-destructive">O</div>
+                    <div className="text-sm text-muted-foreground">Computer</div>
+                  </div>
+                </div>
+
+                {/* Play Again Button */}
+                {gameResult && !isProcessingTx && (
+                  <motion.div 
+                    className="text-center mt-6"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.5, delay: 0.5 }}
                   >
-                    <Button
+                    <Button 
                       onClick={resetGame}
                       className="connect-btn px-8 py-3"
                       data-testid="button-play-again"
@@ -300,10 +373,12 @@ export default function TicTacToe() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• You are X, AI is O</p>
-                <p>• Get three in a row (horizontal, vertical, or diagonal) to win</p>
-                <p>• AI will try to block your moves and win</p>
+                <p>• Connect your wallet to place bets</p>
+                <p>• Click any empty cell to place your X</p>
+                <p>• Each move costs 0.01 cUSD bet on Celo mainnet</p>
+                <p>• Get 3 X's in a row, column, or diagonal to win</p>
                 <p>• Beat the AI to earn 10 points and an NFT!</p>
+                <p>• All transactions are real and recorded on Celo blockchain</p>
               </div>
             </CardContent>
           </Card>

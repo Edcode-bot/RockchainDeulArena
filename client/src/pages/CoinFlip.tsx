@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Coins } from "lucide-react";
-import { addDivviReferral } from "@/utils/divvi";
+import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
 
 type CoinSide = 'heads' | 'tails';
 type GameResult = 'win' | 'lose' | null;
@@ -16,80 +17,113 @@ type GameResult = 'win' | 'lose' | null;
 export default function CoinFlip() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
-  const { address } = useWallet();
+  const { address, isConnected } = useWallet();
   const [playerChoice, setPlayerChoice] = useState<CoinSide | null>(null);
   const [coinResult, setCoinResult] = useState<CoinSide | null>(null);
   const [result, setResult] = useState<GameResult>(null);
   const [isFlipping, setIsFlipping] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const [isProcessingTx, setIsProcessingTx] = useState(false);
 
   const handleChoice = async (choice: CoinSide) => {
-    if (isFlipping) return;
+    if (isFlipping || !isConnected || !address) {
+      if (!isConnected) {
+        toast({
+          title: "Wallet not connected",
+          description: "Please connect your wallet to play",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
     
     setPlayerChoice(choice);
     setIsFlipping(true);
     setShowResult(false);
+    setIsProcessingTx(true);
     playSound('click');
     
-    // Track referral for bet transaction
-    if (address && window.ethereum) {
-      try {
-        const betTxData = { 
-          to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-          data: '0x12345678', // bet function selector
-          value: 100000000000000000n // 0.1 CELO bet amount
-        };
-        await addDivviReferral(betTxData, address);
-      } catch (error) {
-        console.error('Divvi referral tracking for bet failed:', error);
-      }
-    }
-    
-    // Simulate coin flip animation
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const flipResult = Math.random() < 0.5 ? 'heads' : 'tails';
-    setCoinResult(flipResult);
-    setIsFlipping(false);
-    
-    // Determine winner
-    const gameResult = choice === flipResult ? 'win' : 'lose';
-    setResult(gameResult);
-    
-    // Show result after animation
-    setTimeout(async () => {
-      setShowResult(true);
+    try {
+      // Place bet transaction (gameType: 1 for CoinFlip, prediction: 0 for heads, 1 for tails)
+      const prediction = choice === 'heads' ? 0 : 1;
       
-      if (gameResult === 'win') {
-        dispatch({ type: 'WIN_GAME', payload: { gameType: 'coin' } });
-        playSound('win');
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
+
+      const betTxHash = await placeBetTransaction(address, 1, prediction, '0.01');
+      
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+      });
+
+      // Simulate coin flip animation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const flipResult = Math.random() < 0.5 ? 'heads' : 'tails';
+      setCoinResult(flipResult);
+      setIsFlipping(false);
+      
+      // Determine winner
+      const gameResult = choice === flipResult ? 'win' : 'lose';
+      setResult(gameResult);
+      
+      // Show result after animation
+      setTimeout(async () => {
+        setShowResult(true);
         
-        // Track referral for NFT mint transaction
-        if (address && window.ethereum) {
+        if (gameResult === 'win') {
+          dispatch({ type: 'WIN_GAME', payload: { gameType: 'coin' } });
+          playSound('win');
+          
           try {
-            const mintTxData = { 
-              to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-              data: '0x40c10f19', // mint function selector
-              value: 0n 
-            };
-            await addDivviReferral(mintTxData, address);
-          } catch (error) {
-            console.error('Divvi referral tracking for NFT mint failed:', error);
+            // Mint NFT transaction
+            toast({
+              title: "Minting NFT...",
+              description: "Confirm the NFT mint transaction",
+            });
+
+            const mintTxHash = await mintNFTTransaction(address);
+            
+            toast({
+              title: "Perfect Call! 🎉",
+              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
+            });
+          } catch (error: any) {
+            console.error('NFT mint failed:', error);
+            toast({
+              title: "Win recorded, NFT mint failed",
+              description: error.message || "NFT minting transaction failed",
+              variant: "destructive",
+            });
           }
+        } else {
+          toast({
+            title: "Better Luck Next Time!",
+            description: "Your bet was processed but you lost this round",
+            variant: "destructive",
+          });
         }
         
-        toast({
-          title: "Perfect Call! 🎉",
-          description: "You earned 10 points and an NFT!",
-        });
-      } else {
-        toast({
-          title: "Better Luck Next Time!",
-          description: "Try again for the win!",
-          variant: "destructive",
-        });
-      }
-    }, 500);
+        setIsProcessingTx(false);
+      }, 500);
+
+    } catch (error: any) {
+      console.error('Bet transaction failed:', error);
+      setIsFlipping(false);
+      setIsProcessingTx(false);
+      
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
+        variant: "destructive",
+      });
+      
+      // Reset game state on transaction failure
+      resetGame();
+    }
   };
 
   const resetGame = () => {
@@ -98,6 +132,7 @@ export default function CoinFlip() {
     setResult(null);
     setIsFlipping(false);
     setShowResult(false);
+    setIsProcessingTx(false);
   };
 
   return (
@@ -119,7 +154,7 @@ export default function CoinFlip() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Coin Flip</h1>
-              <p className="text-muted-foreground">Call heads or tails!</p>
+              <p className="text-muted-foreground">Call heads or tails! (0.01 cUSD bet)</p>
             </div>
           </div>
           
@@ -127,12 +162,33 @@ export default function CoinFlip() {
             onClick={resetGame}
             variant="outline"
             size="sm"
+            disabled={isProcessingTx}
             data-testid="button-reset"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
             New Flip
           </Button>
         </motion.div>
+
+        {/* Wallet Status */}
+        {!isConnected && (
+          <motion.div 
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-yellow-500 text-yellow-500">
+                    ⚠️ Connect Wallet to Play
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Game Status */}
         <motion.div 
@@ -144,26 +200,31 @@ export default function CoinFlip() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                {showResult && result ? (
+                {isProcessingTx && (
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-blue-500 text-blue-500">
+                    🔄 Processing Transaction...
+                  </Badge>
+                )}
+                {!isProcessingTx && showResult && result ? (
                   <Badge 
                     variant={result === 'win' ? 'default' : 'destructive'}
                     className="text-lg px-4 py-2"
                   >
                     {result === 'win' ? "🎉 You Won!" : "😔 You Lost!"}
                   </Badge>
-                ) : isFlipping ? (
+                ) : !isProcessingTx && isFlipping ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
                     🪙 Flipping...
                   </Badge>
-                ) : playerChoice ? (
+                ) : !isProcessingTx && playerChoice ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
                     You called: {playerChoice.charAt(0).toUpperCase() + playerChoice.slice(1)}
                   </Badge>
-                ) : (
+                ) : !isProcessingTx ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
                     Make your call!
                   </Badge>
-                )}
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -224,7 +285,7 @@ export default function CoinFlip() {
               )}
 
               {/* Choice Buttons */}
-              {!showResult && (
+              {!showResult && isConnected && (
                 <div className="grid grid-cols-2 gap-6 max-w-md mx-auto">
                   <motion.div
                     initial={{ opacity: 0, x: -20 }}
@@ -233,7 +294,7 @@ export default function CoinFlip() {
                   >
                     <Button
                       onClick={() => handleChoice('heads')}
-                      disabled={isFlipping}
+                      disabled={isFlipping || isProcessingTx}
                       variant="outline"
                       className="w-full h-24 text-lg flex flex-col space-y-2 hover:scale-105 transition-transform bg-gradient-to-br from-primary/10 to-accent/10"
                       data-testid="button-heads"
@@ -250,7 +311,7 @@ export default function CoinFlip() {
                   >
                     <Button
                       onClick={() => handleChoice('tails')}
-                      disabled={isFlipping}
+                      disabled={isFlipping || isProcessingTx}
                       variant="outline"
                       className="w-full h-24 text-lg flex flex-col space-y-2 hover:scale-105 transition-transform bg-gradient-to-br from-accent/10 to-secondary/10"
                       data-testid="button-tails"
@@ -263,7 +324,7 @@ export default function CoinFlip() {
               )}
 
               {/* Play Again Button */}
-              {showResult && (
+              {showResult && !isProcessingTx && (
                 <motion.div 
                   className="text-center mt-6"
                   initial={{ opacity: 0 }}
@@ -295,11 +356,12 @@ export default function CoinFlip() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
+                <p>• Connect your wallet to place bets</p>
                 <p>• Choose heads (👑) or tails (⭐)</p>
+                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Watch the coin flip animation</p>
-                <p>• If your prediction matches the result, you win!</p>
-                <p>• Win to earn 10 points and an NFT!</p>
-                <p>• Pure chance - may the luck be with you!</p>
+                <p>• If your prediction matches, you win and get an NFT!</p>
+                <p>• All transactions are real and recorded on Celo blockchain</p>
               </div>
             </CardContent>
           </Card>

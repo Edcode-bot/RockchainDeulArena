@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
@@ -8,90 +9,128 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Dice6 } from "lucide-react";
-import { addDivviReferral } from "@/utils/divvi";
+import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
 
 type DiceNumber = 1 | 2 | 3 | 4 | 5 | 6;
 type GameResult = 'win' | 'lose' | null;
 
+const diceEmojis: Record<DiceNumber, string> = {
+  1: '⚀',
+  2: '⚁',
+  3: '⚂',
+  4: '⚃',
+  5: '⚄',
+  6: '⚅'
+};
+
 export default function DiceRoll() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
+  const { address, isConnected } = useWallet();
   const [playerChoice, setPlayerChoice] = useState<DiceNumber | null>(null);
   const [diceResult, setDiceResult] = useState<DiceNumber | null>(null);
   const [result, setResult] = useState<GameResult>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [showResult, setShowResult] = useState(false);
-  const { address } = useWallet();
-
-  const diceOptions: { value: DiceNumber; emoji: string }[] = [
-    { value: 1, emoji: "⚀" },
-    { value: 2, emoji: "⚁" },
-    { value: 3, emoji: "⚂" },
-    { value: 4, emoji: "⚃" },
-    { value: 5, emoji: "⚄" },
-    { value: 6, emoji: "⚅" },
-  ];
-
-  const getDiceEmoji = (num: DiceNumber | null) => {
-    if (!num) return "🎲";
-    return diceOptions.find(d => d.value === num)?.emoji || "🎲";
-  };
+  const [isProcessingTx, setIsProcessingTx] = useState(false);
 
   const handleChoice = async (choice: DiceNumber) => {
-    if (isRolling) return;
-
-    setPlayerChoice(choice);
-    setIsRolling(true);
-    setShowResult(false);
-    playSound('click');
-
-    // Simulate dice rolling animation
-    await new Promise(resolve => setTimeout(resolve, 2500));
-
-    const rollResult = (Math.floor(Math.random() * 6) + 1) as DiceNumber;
-    setDiceResult(rollResult);
-    setIsRolling(false);
-
-    // Determine winner
-    const gameResult = choice === rollResult ? 'win' : 'lose';
-    setResult(gameResult);
-
-    // Show result after animation
-    setTimeout(() => {
-      setShowResult(true);
-
-      if (gameResult === 'win') {
-        dispatch({ type: 'WIN_GAME', payload: { gameType: 'dice' } });
-        playSound('win');
-
-        // Track referral for NFT mint transaction
-        if (address && window.ethereum) {
-          try {
-            const txData = { 
-              to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-              data: '0x40c10f19', // mint function selector
-              value: 0n 
-            };
-            addDivviReferral(txData, address).catch(error => 
-              console.error('Divvi referral tracking failed:', error)
-            );
-          } catch (error) {
-            console.error('Divvi referral tracking failed:', error);
-          }
-        }
-
+    if (isRolling || !isConnected || !address) {
+      if (!isConnected) {
         toast({
-          title: "Lucky Roll! 🎲",
-          description: "You earned 10 points and an NFT!",
-        });
-      } else {
-        toast({
-          title: "Close, but not quite!",
-          description: "Try another prediction!",
+          title: "Wallet not connected",
+          description: "Please connect your wallet to play",
           variant: "destructive",
         });
       }
-    }, 500);
+      return;
+    }
+    
+    setPlayerChoice(choice);
+    setIsRolling(true);
+    setShowResult(false);
+    setIsProcessingTx(true);
+    playSound('click');
+    
+    try {
+      // Place bet transaction (gameType: 4 for DiceRoll, prediction: dice number 1-6)
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
+
+      const betTxHash = await placeBetTransaction(address, 4, choice, '0.01');
+      
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+      });
+
+      // Simulate dice roll animation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const rollResult = Math.floor(Math.random() * 6) + 1 as DiceNumber;
+      setDiceResult(rollResult);
+      setIsRolling(false);
+      
+      // Determine winner
+      const gameResult = choice === rollResult ? 'win' : 'lose';
+      setResult(gameResult);
+      
+      // Show result after animation
+      setTimeout(async () => {
+        setShowResult(true);
+        
+        if (gameResult === 'win') {
+          dispatch({ type: 'WIN_GAME', payload: { gameType: 'dice' } });
+          playSound('win');
+          
+          try {
+            // Mint NFT transaction
+            toast({
+              title: "Minting NFT...",
+              description: "Confirm the NFT mint transaction",
+            });
+
+            const mintTxHash = await mintNFTTransaction(address);
+            
+            toast({
+              title: "Lucky Roll! 🎉",
+              description: `You rolled ${rollResult}! Earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
+            });
+          } catch (error: any) {
+            console.error('NFT mint failed:', error);
+            toast({
+              title: "Win recorded, NFT mint failed",
+              description: error.message || "NFT minting transaction failed",
+              variant: "destructive",
+            });
+          }
+        } else {
+          toast({
+            title: "No Luck This Time!",
+            description: `You predicted ${choice} but rolled ${rollResult}. Try again!`,
+            variant: "destructive",
+          });
+        }
+        
+        setIsProcessingTx(false);
+      }, 500);
+
+    } catch (error: any) {
+      console.error('Bet transaction failed:', error);
+      setIsRolling(false);
+      setIsProcessingTx(false);
+      
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
+        variant: "destructive",
+      });
+      
+      // Reset game state on transaction failure
+      resetGame();
+    }
   };
 
   const resetGame = () => {
@@ -100,6 +139,7 @@ export default function DiceRoll() {
     setResult(null);
     setIsRolling(false);
     setShowResult(false);
+    setIsProcessingTx(false);
   };
 
   return (
@@ -121,20 +161,41 @@ export default function DiceRoll() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Dice Roll</h1>
-              <p className="text-muted-foreground">Predict the outcome!</p>
+              <p className="text-muted-foreground">Predict the roll! (0.01 cUSD bet)</p>
             </div>
           </div>
-
+          
           <Button 
             onClick={resetGame}
             variant="outline"
             size="sm"
+            disabled={isProcessingTx}
             data-testid="button-reset"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
             New Roll
           </Button>
         </motion.div>
+
+        {/* Wallet Status */}
+        {!isConnected && (
+          <motion.div 
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-yellow-500 text-yellow-500">
+                    ⚠️ Connect Wallet to Play
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Game Status */}
         <motion.div 
@@ -146,26 +207,31 @@ export default function DiceRoll() {
           <Card>
             <CardContent className="pt-6">
               <div className="text-center">
-                {showResult && result ? (
+                {isProcessingTx && (
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-blue-500 text-blue-500">
+                    🔄 Processing Transaction...
+                  </Badge>
+                )}
+                {!isProcessingTx && showResult && result ? (
                   <Badge 
                     variant={result === 'win' ? 'default' : 'destructive'}
                     className="text-lg px-4 py-2"
                   >
-                    {result === 'win' ? "🎉 Perfect Guess!" : "😔 Wrong Number!"}
+                    {result === 'win' ? "🎉 Perfect Prediction!" : "😔 Wrong Prediction!"}
                   </Badge>
-                ) : isRolling ? (
+                ) : !isProcessingTx && isRolling ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
-                    🎲 Rolling...
+                    🎲 Rolling dice...
                   </Badge>
-                ) : playerChoice ? (
+                ) : !isProcessingTx && playerChoice ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
-                    You predicted: {playerChoice}
+                    Your prediction: {diceEmojis[playerChoice]} {playerChoice}
                   </Badge>
-                ) : (
+                ) : !isProcessingTx ? (
                   <Badge variant="outline" className="text-lg px-4 py-2">
-                    Choose your number!
+                    Pick your lucky number!
                   </Badge>
-                )}
+                ) : null}
               </div>
             </CardContent>
           </Card>
@@ -191,16 +257,18 @@ export default function DiceRoll() {
                   className="relative w-32 h-32"
                   animate={isRolling ? { 
                     rotateX: [0, 360, 720, 1080],
-                    rotateY: [0, 360, 720, 1080],
-                    scale: [1, 1.1, 1, 1.1, 1]
+                    rotateY: [0, 360, 720, 1080]
                   } : {}}
                   transition={{ 
-                    duration: 2.5, 
-                    ease: "easeOut"
+                    duration: 2, 
+                    ease: "easeOut",
+                    times: [0, 0.33, 0.66, 1]
                   }}
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center text-6xl shadow-2xl border-4 border-white/20">
-                    {isRolling ? "🎲" : getDiceEmoji(diceResult)}
+                  <div className="absolute inset-0 bg-gradient-to-br from-red-500 to-red-700 rounded-xl flex items-center justify-center text-6xl text-white shadow-2xl border-4 border-white/20">
+                    {isRolling ? "🎲" : 
+                     diceResult ? diceEmojis[diceResult] : 
+                     "🎯"}
                   </div>
                 </motion.div>
               </div>
@@ -214,33 +282,33 @@ export default function DiceRoll() {
                   transition={{ duration: 0.5 }}
                 >
                   <div className="text-2xl font-bold mb-2" data-testid="text-dice-result">
-                    Result: {diceResult}
+                    Rolled: {diceEmojis[diceResult]} {diceResult}
                   </div>
                   <div className="text-muted-foreground">
-                    You predicted: {playerChoice}
+                    Your prediction: {playerChoice ? `${diceEmojis[playerChoice]} ${playerChoice}` : ''}
                   </div>
                 </motion.div>
               )}
 
               {/* Choice Buttons */}
-              {!showResult && (
+              {!showResult && isConnected && (
                 <div className="grid grid-cols-3 gap-4 max-w-lg mx-auto">
-                  {diceOptions.map((option, index) => (
+                  {[1, 2, 3, 4, 5, 6].map((number, index) => (
                     <motion.div
-                      key={option.value}
+                      key={number}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
                     >
                       <Button
-                        onClick={() => handleChoice(option.value)}
-                        disabled={isRolling}
+                        onClick={() => handleChoice(number as DiceNumber)}
+                        disabled={isRolling || isProcessingTx}
                         variant="outline"
-                        className="w-full h-20 text-lg flex flex-col space-y-2 hover:scale-105 transition-transform bg-gradient-to-br from-primary/10 to-accent/10"
-                        data-testid={`button-${option.value}`}
+                        className="w-full h-20 text-lg flex flex-col space-y-1 hover:scale-105 transition-transform bg-gradient-to-br from-red-500/10 to-red-700/10"
+                        data-testid={`button-${number}`}
                       >
-                        <span className="text-3xl">{option.emoji}</span>
-                        <span>{option.value}</span>
+                        <span className="text-3xl">{diceEmojis[number as DiceNumber]}</span>
+                        <span>{number}</span>
                       </Button>
                     </motion.div>
                   ))}
@@ -248,7 +316,7 @@ export default function DiceRoll() {
               )}
 
               {/* Play Again Button */}
-              {showResult && (
+              {showResult && !isProcessingTx && (
                 <motion.div 
                   className="text-center mt-6"
                   initial={{ opacity: 0 }}
@@ -280,11 +348,13 @@ export default function DiceRoll() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
+                <p>• Connect your wallet to place bets</p>
                 <p>• Choose a number from 1 to 6</p>
+                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Watch the dice roll animation</p>
-                <p>• If your prediction matches the result, you win!</p>
-                <p>• Win to earn 10 points and an NFT!</p>
-                <p>• 1 in 6 chance - test your luck!</p>
+                <p>• Predict the exact number to win and get an NFT!</p>
+                <p>• 1/6 chance to win - pure luck game!</p>
+                <p>• All transactions are real and recorded on Celo blockchain</p>
               </div>
             </CardContent>
           </Card>

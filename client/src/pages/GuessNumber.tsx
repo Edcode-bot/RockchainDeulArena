@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
@@ -9,18 +10,19 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Target, TrendingUp, TrendingDown } from "lucide-react";
-import { addDivviReferral } from "@/utils/divvi";
+import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
 
 export default function GuessNumber() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
+  const { address, isConnected } = useWallet();
   const [targetNumber, setTargetNumber] = useState(Math.floor(Math.random() * 100) + 1);
   const [guess, setGuess] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [hints, setHints] = useState<string[]>([]);
   const [gameResult, setGameResult] = useState<'win' | 'lose' | null>(null);
   const [isRevealing, setIsRevealing] = useState(false);
-  const { address } = useWallet(); // Added for Divvi integration
+  const [isProcessingTx, setIsProcessingTx] = useState(false);
 
   const maxAttempts = 7;
 
@@ -36,71 +38,101 @@ export default function GuessNumber() {
       return;
     }
 
-    playSound('click');
-    const newAttempts = attempts + 1;
-    setAttempts(newAttempts);
-
-    if (guessNumber === targetNumber) {
-      // Win!
-      setGameResult('win');
-      setIsRevealing(true);
-      dispatch({ type: 'WIN_GAME', payload: { gameType: 'guess' } });
-      playSound('win');
-
-      // Track referral for NFT mint transaction
-      if (address && window.ethereum) {
-        try {
-          const txData = { 
-            to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
-            data: '0x40c10f19', // mint function selector
-            value: 0n 
-          };
-          addDivviReferral(txData, address).catch(error => 
-            console.error('Divvi referral tracking failed:', error)
-          );
-        } catch (error) {
-          console.error('Divvi referral tracking failed:', error);
-        }
-      }
-
+    if (!isConnected || !address) {
       toast({
-        title: "Perfect! 🎉",
-        description: `You guessed ${targetNumber} in ${newAttempts} attempts! You earned 10 points and an NFT!`,
-      });
-    } else if (newAttempts >= maxAttempts) {
-      // Lose
-      setGameResult('lose');
-      setIsRevealing(true);
-      toast({
-        title: "Game Over!",
-        description: `The number was ${targetNumber}. Try again!`,
+        title: "Wallet not connected",
+        description: "Please connect your wallet to play",
         variant: "destructive",
       });
-    } else {
-      // Continue playing
-      const difference = Math.abs(guessNumber - targetNumber);
-      let hint = "";
-
-      if (guessNumber < targetNumber) {
-        hint = `Too low! `;
-      } else {
-        hint = `Too high! `;
-      }
-
-      if (difference <= 5) {
-        hint += "🔥 Very close!";
-      } else if (difference <= 15) {
-        hint += "🎯 Getting closer!";
-      } else if (difference <= 30) {
-        hint += "📍 You're in the range!";
-      } else {
-        hint += "🌍 Way off!";
-      }
-
-      setHints(prev => [hint, ...prev]);
+      return;
     }
 
-    setGuess("");
+    setIsProcessingTx(true);
+    playSound('click');
+
+    try {
+      // Place bet transaction (gameType: 3 for GuessNumber, prediction: guessed number)
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
+
+      const betTxHash = await placeBetTransaction(address, 3, guessNumber, '0.01');
+      
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
+      });
+
+      setIsRevealing(true);
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      if (guessNumber === targetNumber) {
+        setGameResult('win');
+        dispatch({ type: 'WIN_GAME', payload: { gameType: 'guess' } });
+        playSound('win');
+        
+        try {
+          // Mint NFT transaction
+          toast({
+            title: "Minting NFT...",
+            description: "Confirm the NFT mint transaction",
+          });
+
+          const mintTxHash = await mintNFTTransaction(address);
+          
+          toast({
+            title: "Perfect Guess! 🎉",
+            description: `You found ${targetNumber} in ${newAttempts} attempts! NFT minted! Tx: ${mintTxHash.slice(0, 10)}...`,
+          });
+        } catch (error: any) {
+          console.error('NFT mint failed:', error);
+          toast({
+            title: "Win recorded, NFT mint failed",
+            description: error.message || "NFT minting transaction failed",
+            variant: "destructive",
+          });
+        }
+      } else if (newAttempts >= maxAttempts) {
+        setGameResult('lose');
+        const newHint = `Game Over! The number was ${targetNumber}`;
+        setHints(prev => [...prev, newHint]);
+        toast({
+          title: "Game Over!",
+          description: `The number was ${targetNumber}. Try again!`,
+          variant: "destructive",
+        });
+      } else {
+        const newHint = guessNumber < targetNumber 
+          ? `${guessNumber} is too low! 📈` 
+          : `${guessNumber} is too high! 📉`;
+        setHints(prev => [...prev, newHint]);
+        
+        toast({
+          title: guessNumber < targetNumber ? "Too Low!" : "Too High!",
+          description: `${maxAttempts - newAttempts} attempts remaining`,
+        });
+      }
+
+      setGuess("");
+      setIsRevealing(false);
+      setIsProcessingTx(false);
+
+    } catch (error: any) {
+      console.error('Bet transaction failed:', error);
+      setIsProcessingTx(false);
+      setIsRevealing(false);
+      
+      toast({
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
+        variant: "destructive",
+      });
+    }
   };
 
   const resetGame = () => {
@@ -110,19 +142,7 @@ export default function GuessNumber() {
     setHints([]);
     setGameResult(null);
     setIsRevealing(false);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !gameResult) {
-      handleGuess();
-    }
-  };
-
-  const getProgressColor = () => {
-    const percentage = (attempts / maxAttempts) * 100;
-    if (percentage < 50) return "bg-primary";
-    if (percentage < 80) return "bg-accent";
-    return "bg-destructive";
+    setIsProcessingTx(false);
   };
 
   return (
@@ -144,20 +164,41 @@ export default function GuessNumber() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Guess the Number</h1>
-              <p className="text-muted-foreground">Find the number between 1-100</p>
+              <p className="text-muted-foreground">Find the number 1-100! (0.01 cUSD bet per guess)</p>
             </div>
           </div>
-
+          
           <Button 
             onClick={resetGame}
             variant="outline"
             size="sm"
+            disabled={isProcessingTx}
             data-testid="button-reset"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
-            New Game
+            New Number
           </Button>
         </motion.div>
+
+        {/* Wallet Status */}
+        {!isConnected && (
+          <motion.div 
+            className="mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="border-yellow-500/50 bg-yellow-500/10">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-yellow-500 text-yellow-500">
+                    ⚠️ Connect Wallet to Play
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Game Status */}
         <motion.div 
@@ -168,48 +209,34 @@ export default function GuessNumber() {
         >
           <Card>
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Attempts</p>
-                  <p className="text-2xl font-bold text-primary" data-testid="text-attempts">
-                    {attempts}/{maxAttempts}
-                  </p>
-                </div>
-
-                {gameResult && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.5 }}
-                  >
-                    <Badge 
-                      variant={gameResult === 'win' ? 'default' : 'destructive'}
-                      className="text-lg px-4 py-2"
-                    >
-                      {gameResult === 'win' ? "🎉 You Won!" : "😔 Game Over!"}
-                    </Badge>
-                  </motion.div>
+              <div className="text-center">
+                {isProcessingTx && (
+                  <Badge variant="outline" className="text-lg px-4 py-2 border-blue-500 text-blue-500">
+                    🔄 Processing Transaction...
+                  </Badge>
                 )}
-
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Target Range</p>
-                  <p className="text-lg font-bold text-accent">1 - 100</p>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="w-full bg-muted rounded-full h-2">
-                <motion.div 
-                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor()}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(attempts / maxAttempts) * 100}%` }}
-                />
+                {!isProcessingTx && gameResult ? (
+                  <Badge 
+                    variant={gameResult === 'win' ? 'default' : 'destructive'}
+                    className="text-lg px-4 py-2"
+                  >
+                    {gameResult === 'win' ? "🎉 You Won!" : "😔 Game Over!"}
+                  </Badge>
+                ) : !isProcessingTx && isRevealing ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    🎯 Checking your guess...
+                  </Badge>
+                ) : !isProcessingTx ? (
+                  <Badge variant="outline" className="text-lg px-4 py-2">
+                    Attempts: {attempts}/{maxAttempts}
+                  </Badge>
+                ) : null}
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Game Area */}
+        {/* Game Interface */}
         <motion.div 
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
@@ -220,105 +247,108 @@ export default function GuessNumber() {
             <CardHeader>
               <CardTitle className="text-center flex items-center justify-center space-x-2">
                 <Target className="h-6 w-6" />
-                <span>
-                  {gameResult 
-                    ? `The number was ${targetNumber}!`
-                    : "What's your guess?"
-                  }
-                </span>
+                <span>Guess the Secret Number</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {!gameResult ? (
-                <div className="max-w-md mx-auto space-y-4">
-                  <div className="flex space-x-2">
-                    <Input
-                      type="number"
-                      placeholder="Enter a number (1-100)"
-                      value={guess}
-                      onChange={(e) => setGuess(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      min="1"
-                      max="100"
-                      className="text-lg text-center"
-                      data-testid="input-guess"
-                    />
-                    <Button 
-                      onClick={handleGuess}
-                      disabled={!guess || gameResult !== null}
-                      className="px-6"
-                      data-testid="button-guess"
-                    >
-                      Guess
-                    </Button>
-                  </div>
-
-                  {attempts > 0 && (
-                    <div className="text-center text-sm text-muted-foreground">
-                      {maxAttempts - attempts} attempts remaining
-                    </div>
-                  )}
+              <div className="max-w-md mx-auto space-y-6">
+                {/* Number Range Display */}
+                <div className="text-center p-6 bg-gradient-to-br from-primary/10 to-accent/10 rounded-lg border-2 border-primary/20">
+                  <div className="text-4xl font-bold mb-2">1 - 100</div>
+                  <div className="text-muted-foreground">Range</div>
                 </div>
-              ) : (
-                <motion.div 
-                  className="text-center"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5, delay: 0.5 }}
-                >
+
+                {/* Input and Submit */}
+                {!gameResult && isConnected && (
+                  <div className="space-y-4">
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.3 }}
+                    >
+                      <Input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={guess}
+                        onChange={(e) => setGuess(e.target.value)}
+                        placeholder="Enter your guess (1-100)"
+                        className="text-center text-lg h-12"
+                        disabled={isRevealing || isProcessingTx}
+                        data-testid="input-guess"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && !isRevealing && !isProcessingTx) {
+                            handleGuess();
+                          }
+                        }}
+                      />
+                    </motion.div>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.4 }}
+                    >
+                      <Button
+                        onClick={handleGuess}
+                        disabled={!guess || isRevealing || isProcessingTx}
+                        className="w-full h-12 text-lg connect-btn"
+                        data-testid="button-guess"
+                      >
+                        {isProcessingTx ? "Processing..." : isRevealing ? "Checking..." : "Submit Guess"}
+                      </Button>
+                    </motion.div>
+                  </div>
+                )}
+
+                {/* Hints Display */}
+                {hints.length > 0 && (
                   <motion.div 
-                    className="text-6xl font-black mb-4"
-                    animate={isRevealing ? { scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] } : {}}
-                    transition={{ duration: 0.8 }}
-                    data-testid="text-target-number"
+                    className="space-y-2"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.5 }}
                   >
-                    {targetNumber}
+                    <h3 className="font-semibold text-center">Hints:</h3>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {hints.map((hint, index) => (
+                        <motion.div
+                          key={index}
+                          className="p-2 bg-secondary/50 rounded text-sm text-center flex items-center justify-center space-x-2"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3, delay: index * 0.1 }}
+                        >
+                          {hint.includes('low') && <TrendingUp className="h-4 w-4 text-red-500" />}
+                          {hint.includes('high') && <TrendingDown className="h-4 w-4 text-blue-500" />}
+                          <span>{hint}</span>
+                        </motion.div>
+                      ))}
+                    </div>
                   </motion.div>
-                  <Button 
-                    onClick={resetGame}
-                    className="connect-btn px-8 py-3"
-                    data-testid="button-play-again"
+                )}
+
+                {/* Play Again Button */}
+                {gameResult && !isProcessingTx && (
+                  <motion.div 
+                    className="text-center"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.5 }}
                   >
-                    Play Again
-                  </Button>
-                </motion.div>
-              )}
+                    <Button 
+                      onClick={resetGame}
+                      className="connect-btn px-8 py-3"
+                      data-testid="button-play-again"
+                    >
+                      Play Again
+                    </Button>
+                  </motion.div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </motion.div>
-
-        {/* Hints */}
-        {hints.length > 0 && (
-          <motion.div 
-            className="mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Hints</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {hints.map((hint, index) => (
-                    <motion.div
-                      key={index}
-                      className="p-3 bg-muted/50 rounded-lg border border-border"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                    >
-                      <p className="text-sm">
-                        <span className="font-semibold">Attempt {hints.length - index}:</span> {hint}
-                      </p>
-                    </motion.div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
 
         {/* Game Rules */}
         <motion.div
@@ -332,10 +362,13 @@ export default function GuessNumber() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Guess the secret number between 1 and 100</p>
-                <p>• You have {maxAttempts} attempts to find it</p>
-                <p>• Get hints after each wrong guess</p>
-                <p>• Guess correctly to earn 10 points and an NFT!</p>
+                <p>• Connect your wallet to place bets</p>
+                <p>• Guess a number between 1 and 100</p>
+                <p>• Each guess costs 0.01 cUSD bet on Celo mainnet</p>
+                <p>• You have {maxAttempts} attempts to find the number</p>
+                <p>• Get hints if your guess is too high or too low</p>
+                <p>• Find the exact number to earn 10 points and an NFT!</p>
+                <p>• All transactions are real and recorded on Celo blockchain</p>
               </div>
             </CardContent>
           </Card>
