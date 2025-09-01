@@ -2,11 +2,13 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useGameState, playSound } from "@/state/store";
+import { useWallet } from "@/wallet/reown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Dice6 } from "lucide-react";
+import { addDivviReferral } from "@/utils/divvi";
 
 type DiceNumber = 1 | 2 | 3 | 4 | 5 | 6;
 type GameResult = 'win' | 'lose' | null;
@@ -19,6 +21,7 @@ export default function DiceRoll() {
   const [result, setResult] = useState<GameResult>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [showResult, setShowResult] = useState(false);
+  const { address } = useWallet();
 
   const diceOptions: { value: DiceNumber; emoji: string }[] = [
     { value: 1, emoji: "⚀" },
@@ -36,32 +39,49 @@ export default function DiceRoll() {
 
   const handleChoice = async (choice: DiceNumber) => {
     if (isRolling) return;
-    
+
     setPlayerChoice(choice);
     setIsRolling(true);
     setShowResult(false);
     playSound('click');
-    
+
     // Simulate dice rolling animation
     await new Promise(resolve => setTimeout(resolve, 2500));
-    
+
     const rollResult = (Math.floor(Math.random() * 6) + 1) as DiceNumber;
     setDiceResult(rollResult);
     setIsRolling(false);
-    
+
     // Determine winner
     const gameResult = choice === rollResult ? 'win' : 'lose';
     setResult(gameResult);
-    
+
     // Show result after animation
     setTimeout(() => {
       setShowResult(true);
-      
+
       if (gameResult === 'win') {
         dispatch({ type: 'WIN_GAME', payload: { gameType: 'dice' } });
         playSound('win');
+
+        // Track referral for NFT mint transaction
+        if (address && window.ethereum) {
+          try {
+            const txData = { 
+              to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+              data: '0x40c10f19', // mint function selector
+              value: 0n 
+            };
+            addDivviReferral(txData, address).catch(error => 
+              console.error('Divvi referral tracking failed:', error)
+            );
+          } catch (error) {
+            console.error('Divvi referral tracking failed:', error);
+          }
+        }
+
         toast({
-          title: "Perfect Prediction! 🎉",
+          title: "Lucky Roll! 🎲",
           description: "You earned 10 points and an NFT!",
         });
       } else {
@@ -104,7 +124,7 @@ export default function DiceRoll() {
               <p className="text-muted-foreground">Predict the outcome!</p>
             </div>
           </div>
-          
+
           <Button 
             onClick={resetGame}
             variant="outline"

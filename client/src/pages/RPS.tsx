@@ -2,11 +2,13 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useGameState, playSound } from "@/state/store";
+import { useWallet } from "@/wallet/reown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw } from "lucide-react";
+import { addDivviReferral } from "@/utils/divvi";
 
 type Choice = 'rock' | 'paper' | 'scissors';
 type GameResult = 'win' | 'lose' | 'tie' | null;
@@ -14,6 +16,7 @@ type GameResult = 'win' | 'lose' | 'tie' | null;
 export default function RPS() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
+  const { address } = useWallet();
   const [playerChoice, setPlayerChoice] = useState<Choice | null>(null);
   const [aiChoice, setAiChoice] = useState<Choice | null>(null);
   const [result, setResult] = useState<GameResult>(null);
@@ -75,6 +78,21 @@ export default function RPS() {
       if (finalResult === 'win') {
         dispatch({ type: 'WIN_GAME', payload: { gameType: 'rps' } });
         playSound('win');
+        
+        // Track referral for NFT mint transaction
+        if (address && window.ethereum) {
+          try {
+            const txData = { 
+              to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+              data: '0x40c10f19', // mint function selector
+              value: 0n 
+            };
+            await addDivviReferral(txData, address);
+          } catch (error) {
+            console.error('Divvi referral tracking failed:', error);
+          }
+        }
+        
         toast({
           title: "Victory! 🎉",
           description: "You earned 10 points and an NFT!",

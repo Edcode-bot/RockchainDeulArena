@@ -2,11 +2,13 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useGameState, playSound } from "@/state/store";
+import { useWallet } from "@/wallet/reown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw, Grid3x3 } from "lucide-react";
+import { addDivviReferral } from "@/utils/divvi";
 
 type Cell = 'X' | 'O' | null;
 type Board = Cell[];
@@ -19,6 +21,8 @@ export default function TicTacToe() {
   const [isPlayerTurn, setIsPlayerTurn] = useState(true);
   const [result, setResult] = useState<GameResult>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const { address } = useWallet();
+
 
   const checkWinner = (board: Board): 'X' | 'O' | 'tie' | null => {
     const winPatterns = [
@@ -40,7 +44,7 @@ export default function TicTacToe() {
   const getBestMove = (board: Board): number => {
     // Simple AI that tries to win, block, or take center/corners
     const available = board.map((cell, index) => cell === null ? index : null).filter(val => val !== null) as number[];
-    
+
     // Try to win
     for (const move of available) {
       const testBoard = [...board];
@@ -92,7 +96,7 @@ export default function TicTacToe() {
     // AI turn
     setIsThinking(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     const aiMove = getBestMove(newBoard);
     newBoard[aiMove] = 'O';
     setBoard(newBoard);
@@ -108,11 +112,27 @@ export default function TicTacToe() {
 
   const handleGameEnd = (winner: 'X' | 'O' | 'tie') => {
     let gameResult: GameResult;
-    
+
     if (winner === 'X') {
-      gameResult = 'win';
       dispatch({ type: 'WIN_GAME', payload: { gameType: 'ttt' } });
       playSound('win');
+
+      // Track referral for NFT mint transaction
+      if (address && window.ethereum) {
+        try {
+          const txData = {
+            to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+            data: '0x40c10f19', // mint function selector
+            value: 0n
+          };
+          addDivviReferral(txData, address).catch(error =>
+            console.error('Divvi referral tracking failed:', error)
+          );
+        } catch (error) {
+          console.error('Divvi referral tracking failed:', error);
+        }
+      }
+
       toast({
         title: "Victory! 🎉",
         description: "You earned 10 points and an NFT!",
@@ -120,18 +140,19 @@ export default function TicTacToe() {
     } else if (winner === 'O') {
       gameResult = 'lose';
       toast({
-        title: "Game Over",
-        description: "AI wins! Try again!",
+        title: "AI Wins!",
+        description: "Better luck next time!",
         variant: "destructive",
       });
     } else {
       gameResult = 'tie';
       toast({
-        title: "It's a Tie!",
-        description: "Well played! Try again for the win!",
+        title: "It's a Draw!",
+        description: "Great game! Try again for the win!",
+        variant: "secondary",
       });
     }
-    
+
     setResult(gameResult);
   };
 
@@ -141,6 +162,11 @@ export default function TicTacToe() {
     setResult(null);
     setIsThinking(false);
   };
+
+  const isDraw = (board: Board): boolean => {
+    return board.every(cell => cell !== null) && checkWinner(board) === 'tie';
+  };
+
 
   const getCellContent = (cell: Cell, index: number) => {
     if (cell === 'X') return <span className="text-primary text-2xl font-bold">X</span>;
@@ -152,7 +178,7 @@ export default function TicTacToe() {
     <div className="min-h-screen pb-20 md:pb-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         {/* Header */}
-        <motion.div 
+        <motion.div
           className="flex items-center justify-between mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -170,8 +196,8 @@ export default function TicTacToe() {
               <p className="text-muted-foreground">Beat the AI to win!</p>
             </div>
           </div>
-          
-          <Button 
+
+          <Button
             onClick={resetGame}
             variant="outline"
             size="sm"
@@ -183,7 +209,7 @@ export default function TicTacToe() {
         </motion.div>
 
         {/* Game Status */}
-        <motion.div 
+        <motion.div
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -193,12 +219,12 @@ export default function TicTacToe() {
             <CardContent className="pt-6">
               <div className="text-center">
                 {result ? (
-                  <Badge 
+                  <Badge
                     variant={result === 'win' ? 'default' : result === 'lose' ? 'destructive' : 'secondary'}
                     className="text-lg px-4 py-2"
                   >
-                    {result === 'win' ? "🎉 You Won!" : 
-                     result === 'lose' ? "😔 AI Won!" : 
+                    {result === 'win' ? "🎉 You Won!" :
+                     result === 'lose' ? "😔 AI Won!" :
                      "🤝 It's a Tie!"}
                   </Badge>
                 ) : isThinking ? (
@@ -216,7 +242,7 @@ export default function TicTacToe() {
         </motion.div>
 
         {/* Game Board */}
-        <motion.div 
+        <motion.div
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -242,13 +268,13 @@ export default function TicTacToe() {
                 </div>
 
                 {result && (
-                  <motion.div 
+                  <motion.div
                     className="text-center"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.5, delay: 0.5 }}
                   >
-                    <Button 
+                    <Button
                       onClick={resetGame}
                       className="connect-btn px-8 py-3"
                       data-testid="button-play-again"

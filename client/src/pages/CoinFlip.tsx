@@ -2,11 +2,13 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useGameState, playSound } from "@/state/store";
+import { useWallet } from "@/wallet/reown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Coins } from "lucide-react";
+import { addDivviReferral } from "@/utils/divvi";
 
 type CoinSide = 'heads' | 'tails';
 type GameResult = 'win' | 'lose' | null;
@@ -14,6 +16,7 @@ type GameResult = 'win' | 'lose' | null;
 export default function CoinFlip() {
   const { state, dispatch } = useGameState();
   const { toast } = useToast();
+  const { address } = useWallet();
   const [playerChoice, setPlayerChoice] = useState<CoinSide | null>(null);
   const [coinResult, setCoinResult] = useState<CoinSide | null>(null);
   const [result, setResult] = useState<GameResult>(null);
@@ -28,6 +31,20 @@ export default function CoinFlip() {
     setShowResult(false);
     playSound('click');
     
+    // Track referral for bet transaction
+    if (address && window.ethereum) {
+      try {
+        const betTxData = { 
+          to: '0x0000000000000000000000000000000000000000', // Mock betting contract address
+          data: '0x12345678', // bet function selector
+          value: 100000000000000000n // 0.1 CELO bet amount
+        };
+        await addDivviReferral(betTxData, address);
+      } catch (error) {
+        console.error('Divvi referral tracking for bet failed:', error);
+      }
+    }
+    
     // Simulate coin flip animation
     await new Promise(resolve => setTimeout(resolve, 2000));
     
@@ -40,12 +57,27 @@ export default function CoinFlip() {
     setResult(gameResult);
     
     // Show result after animation
-    setTimeout(() => {
+    setTimeout(async () => {
       setShowResult(true);
       
       if (gameResult === 'win') {
         dispatch({ type: 'WIN_GAME', payload: { gameType: 'coin' } });
         playSound('win');
+        
+        // Track referral for NFT mint transaction
+        if (address && window.ethereum) {
+          try {
+            const mintTxData = { 
+              to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+              data: '0x40c10f19', // mint function selector
+              value: 0n 
+            };
+            await addDivviReferral(mintTxData, address);
+          } catch (error) {
+            console.error('Divvi referral tracking for NFT mint failed:', error);
+          }
+        }
+        
         toast({
           title: "Perfect Call! 🎉",
           description: "You earned 10 points and an NFT!",

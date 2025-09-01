@@ -2,12 +2,14 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useGameState, playSound } from "@/state/store";
+import { useWallet } from "@/wallet/reown";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, RotateCcw, Target } from "lucide-react";
+import { ArrowLeft, RotateCcw, Target, TrendingUp, TrendingDown } from "lucide-react";
+import { addDivviReferral } from "@/utils/divvi";
 
 export default function GuessNumber() {
   const { state, dispatch } = useGameState();
@@ -18,12 +20,13 @@ export default function GuessNumber() {
   const [hints, setHints] = useState<string[]>([]);
   const [gameResult, setGameResult] = useState<'win' | 'lose' | null>(null);
   const [isRevealing, setIsRevealing] = useState(false);
+  const { address } = useWallet(); // Added for Divvi integration
 
   const maxAttempts = 7;
 
   const handleGuess = async () => {
     const guessNumber = parseInt(guess);
-    
+
     if (isNaN(guessNumber) || guessNumber < 1 || guessNumber > 100) {
       toast({
         title: "Invalid guess",
@@ -43,6 +46,23 @@ export default function GuessNumber() {
       setIsRevealing(true);
       dispatch({ type: 'WIN_GAME', payload: { gameType: 'guess' } });
       playSound('win');
+
+      // Track referral for NFT mint transaction
+      if (address && window.ethereum) {
+        try {
+          const txData = { 
+            to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+            data: '0x40c10f19', // mint function selector
+            value: 0n 
+          };
+          addDivviReferral(txData, address).catch(error => 
+            console.error('Divvi referral tracking failed:', error)
+          );
+        } catch (error) {
+          console.error('Divvi referral tracking failed:', error);
+        }
+      }
+
       toast({
         title: "Perfect! 🎉",
         description: `You guessed ${targetNumber} in ${newAttempts} attempts! You earned 10 points and an NFT!`,
@@ -60,13 +80,13 @@ export default function GuessNumber() {
       // Continue playing
       const difference = Math.abs(guessNumber - targetNumber);
       let hint = "";
-      
+
       if (guessNumber < targetNumber) {
         hint = `Too low! `;
       } else {
         hint = `Too high! `;
       }
-      
+
       if (difference <= 5) {
         hint += "🔥 Very close!";
       } else if (difference <= 15) {
@@ -127,7 +147,7 @@ export default function GuessNumber() {
               <p className="text-muted-foreground">Find the number between 1-100</p>
             </div>
           </div>
-          
+
           <Button 
             onClick={resetGame}
             variant="outline"
@@ -155,7 +175,7 @@ export default function GuessNumber() {
                     {attempts}/{maxAttempts}
                   </p>
                 </div>
-                
+
                 {gameResult && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -232,7 +252,7 @@ export default function GuessNumber() {
                       Guess
                     </Button>
                   </div>
-                  
+
                   {attempts > 0 && (
                     <div className="text-center text-sm text-muted-foreground">
                       {maxAttempts - attempts} attempts remaining
