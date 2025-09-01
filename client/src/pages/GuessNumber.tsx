@@ -51,7 +51,7 @@ export default function GuessNumber() {
       if (address && window.ethereum) {
         try {
           const txData = { 
-            to: '0x0000000000000000000000000000000000000000', // Mock NFT contract address
+            to: '0x13b235E666caB3b2151557F226dB2ceF5163923c', // RockChain Duel Arena Celo mainnet contract
             data: '0x40c10f19', // mint function selector
             value: 0n 
           };
