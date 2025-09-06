@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw } from "lucide-react";
-import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
+import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
 
 type Choice = 'rock' | 'paper' | 'scissors';
 type GameResult = 'win' | 'lose' | 'draw' | null;
@@ -60,24 +60,9 @@ export default function RPS() {
     setIsRevealing(true);
     setShowResult(false);
     setIsProcessingTx(true);
-    playSound('click');
+    playGameSound('click');
     
     try {
-      // Place bet transaction (gameType: 0 for RPS, prediction: 0=rock, 1=paper, 2=scissors)
-      const prediction = choices.indexOf(choice);
-      
-      toast({
-        title: "Placing bet...",
-        description: "Confirm the transaction in your wallet",
-      });
-
-      const betTxHash = await placeBetTransaction(address, 0, prediction, '0.01');
-      
-      toast({
-        title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
-      });
-
       // Simulate computer choice animation
       await new Promise(resolve => setTimeout(resolve, 1500));
       
@@ -89,6 +74,9 @@ export default function RPS() {
       const gameResult = getWinner(choice, compChoice);
       setResult(gameResult);
       
+      // Handle game result
+      const result = await handleGameResult('rps', gameResult, address);
+      
       setTimeout(async () => {
         setShowResult(true);
         
@@ -96,27 +84,10 @@ export default function RPS() {
           dispatch({ type: 'WIN_GAME', payload: { gameType: 'rps' } });
           playSound('win');
           
-          try {
-            // Mint NFT transaction
-            toast({
-              title: "Minting NFT...",
-              description: "Confirm the NFT mint transaction",
-            });
-
-            const mintTxHash = await mintNFTTransaction(address);
-            
-            toast({
-              title: "Victory! 🎉",
-              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
-            });
-          } catch (error: any) {
-            console.error('NFT mint failed:', error);
-            toast({
-              title: "Win recorded, NFT mint failed",
-              description: error.message || "NFT minting transaction failed",
-              variant: "destructive",
-            });
-          }
+          toast({
+            title: "Victory! 🎉",
+            description: `You earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'}`,
+          });
         } else if (gameResult === 'draw') {
           toast({
             title: "It's a Draw!",
@@ -134,13 +105,13 @@ export default function RPS() {
       }, 1000);
 
     } catch (error: any) {
-      console.error('Bet transaction failed:', error);
+      console.error('Game failed:', error);
       setIsRevealing(false);
       setIsProcessingTx(false);
       
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to place bet on blockchain",
+        title: "Game failed",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
       
@@ -176,7 +147,7 @@ export default function RPS() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Rock Paper Scissors</h1>
-              <p className="text-muted-foreground">Beat the computer! (0.01 cUSD bet)</p>
+              <p className="text-muted-foreground">Beat the computer and earn points!</p>
             </div>
           </div>
           
@@ -365,12 +336,11 @@ export default function RPS() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Connect your wallet to place bets</p>
+                <p>• Connect your wallet to play</p>
                 <p>• Choose Rock (🪨), Paper (📄), or Scissors (✂️)</p>
-                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Rock beats Scissors, Scissors beats Paper, Paper beats Rock</p>
-                <p>• Win to earn 10 points and an NFT!</p>
-                <p>• All transactions are real and recorded on Celo blockchain</p>
+                <p>• Win to earn 10 points and an NFT URI!</p>
+                <p>• Instant play - no blockchain transactions required</p>
               </div>
             </CardContent>
           </Card>

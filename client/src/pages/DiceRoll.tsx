@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Dice6 } from "lucide-react";
-import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
+import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
 
 type DiceNumber = 1 | 2 | 3 | 4 | 5 | 6;
 type GameResult = 'win' | 'lose' | null;
@@ -50,22 +50,9 @@ export default function DiceRoll() {
     setIsRolling(true);
     setShowResult(false);
     setIsProcessingTx(true);
-    playSound('click');
+    playGameSound('click');
     
     try {
-      // Place bet transaction (gameType: 4 for DiceRoll, prediction: dice number 1-6)
-      toast({
-        title: "Placing bet...",
-        description: "Confirm the transaction in your wallet",
-      });
-
-      const betTxHash = await placeBetTransaction(address, 4, choice, '0.01');
-      
-      toast({
-        title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
-      });
-
       // Simulate dice roll animation
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -77,6 +64,9 @@ export default function DiceRoll() {
       const gameResult = choice === rollResult ? 'win' : 'lose';
       setResult(gameResult);
       
+      // Handle game result
+      const result = await handleGameResult('dice', gameResult, address);
+      
       // Show result after animation
       setTimeout(async () => {
         setShowResult(true);
@@ -85,27 +75,10 @@ export default function DiceRoll() {
           dispatch({ type: 'WIN_GAME', payload: { gameType: 'dice' } });
           playSound('win');
           
-          try {
-            // Mint NFT transaction
-            toast({
-              title: "Minting NFT...",
-              description: "Confirm the NFT mint transaction",
-            });
-
-            const mintTxHash = await mintNFTTransaction(address);
-            
-            toast({
-              title: "Lucky Roll! 🎉",
-              description: `You rolled ${rollResult}! Earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
-            });
-          } catch (error: any) {
-            console.error('NFT mint failed:', error);
-            toast({
-              title: "Win recorded, NFT mint failed",
-              description: error.message || "NFT minting transaction failed",
-              variant: "destructive",
-            });
-          }
+          toast({
+            title: "Lucky Roll! 🎉",
+            description: `You rolled ${rollResult}! Earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'}`,
+          });
         } else {
           toast({
             title: "No Luck This Time!",
@@ -118,17 +91,16 @@ export default function DiceRoll() {
       }, 500);
 
     } catch (error: any) {
-      console.error('Bet transaction failed:', error);
+      console.error('Game failed:', error);
       setIsRolling(false);
       setIsProcessingTx(false);
       
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to place bet on blockchain",
+        title: "Game failed",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
       
-      // Reset game state on transaction failure
       resetGame();
     }
   };
@@ -161,7 +133,7 @@ export default function DiceRoll() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Dice Roll</h1>
-              <p className="text-muted-foreground">Predict the roll! (0.01 cUSD bet)</p>
+              <p className="text-muted-foreground">Predict the roll and earn points!</p>
             </div>
           </div>
           
@@ -348,13 +320,12 @@ export default function DiceRoll() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Connect your wallet to place bets</p>
+                <p>• Connect your wallet to play</p>
                 <p>• Choose a number from 1 to 6</p>
-                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Watch the dice roll animation</p>
-                <p>• Predict the exact number to win and get an NFT!</p>
+                <p>• Predict the exact number to win and get points + NFT URI!</p>
                 <p>• 1/6 chance to win - pure luck game!</p>
-                <p>• All transactions are real and recorded on Celo blockchain</p>
+                <p>• Instant play - no blockchain transactions required</p>
               </div>
             </CardContent>
           </Card>

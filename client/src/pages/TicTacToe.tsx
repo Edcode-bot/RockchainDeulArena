@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Grid3x3 } from "lucide-react";
-import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
+import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
 
 type Cell = 'X' | 'O' | null;
 type Board = Cell[];
@@ -77,22 +77,9 @@ export default function TicTacToe() {
     }
 
     setIsProcessingTx(true);
-    playSound('click');
+    playGameSound('click');
 
     try {
-      // Place bet transaction (gameType: 2 for TicTacToe, prediction: cell index)
-      toast({
-        title: "Placing bet...",
-        description: "Confirm the transaction in your wallet",
-      });
-
-      const betTxHash = await placeBetTransaction(address, 2, index, '0.01');
-      
-      toast({
-        title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
-      });
-
       // Make player move
       const newBoard = [...board];
       newBoard[index] = 'X';
@@ -107,29 +94,16 @@ export default function TicTacToe() {
           dispatch({ type: 'WIN_GAME', payload: { gameType: 'tictactoe' } });
           playSound('win');
           
-          try {
-            // Mint NFT transaction
-            toast({
-              title: "Minting NFT...",
-              description: "Confirm the NFT mint transaction",
-            });
-
-            const mintTxHash = await mintNFTTransaction(address);
-            
-            toast({
-              title: "Victory! 🎉",
-              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}...`,
-            });
-          } catch (error: any) {
-            console.error('NFT mint failed:', error);
-            toast({
-              title: "Win recorded, NFT mint failed",
-              description: error.message || "NFT minting transaction failed",
-              variant: "destructive",
-            });
-          }
+          // Handle game result
+          const gameResult = await handleGameResult('tictactoe', 'win', address);
+          
+          toast({
+            title: "Victory! 🎉",
+            description: `You earned ${gameResult.points} points${gameResult.nftUri ? ' and an NFT!' : '!'}`,
+          });
         } else {
           setGameResult('draw');
+          await handleGameResult('tictactoe', 'draw', address);
           toast({
             title: "It's a Draw!",
             description: "Good game! Try again for the win!",
@@ -141,7 +115,7 @@ export default function TicTacToe() {
 
       // Computer turn
       setIsComputerThinking(true);
-      setTimeout(() => {
+      setTimeout(async () => {
         const computerMove = getBestMove(newBoard);
         const computerBoard = [...newBoard];
         computerBoard[computerMove] = 'O';
@@ -153,6 +127,7 @@ export default function TicTacToe() {
         if (computerResult) {
           if (computerResult === 'O') {
             setGameResult('lose');
+            await handleGameResult('tictactoe', 'lose', address);
             toast({
               title: "Computer Wins!",
               description: "Better luck next time!",
@@ -160,6 +135,7 @@ export default function TicTacToe() {
             });
           } else {
             setGameResult('draw');
+            await handleGameResult('tictactoe', 'draw', address);
             toast({
               title: "It's a Draw!",
               description: "Good game! Try again for the win!",
@@ -172,12 +148,12 @@ export default function TicTacToe() {
       }, 1000);
 
     } catch (error: any) {
-      console.error('Bet transaction failed:', error);
+      console.error('Game failed:', error);
       setIsProcessingTx(false);
       
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to place bet on blockchain",
+        title: "Game failed",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
     }
@@ -210,7 +186,7 @@ export default function TicTacToe() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Tic Tac Toe</h1>
-              <p className="text-muted-foreground">Beat the AI! (0.01 cUSD bet per move)</p>
+              <p className="text-muted-foreground">Beat the AI and earn points!</p>
             </div>
           </div>
           
@@ -373,12 +349,11 @@ export default function TicTacToe() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Connect your wallet to place bets</p>
+                <p>• Connect your wallet to play</p>
                 <p>• Click any empty cell to place your X</p>
-                <p>• Each move costs 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Get 3 X's in a row, column, or diagonal to win</p>
-                <p>• Beat the AI to earn 10 points and an NFT!</p>
-                <p>• All transactions are real and recorded on Celo blockchain</p>
+                <p>• Beat the AI to earn 10 points and an NFT URI!</p>
+                <p>• Instant play - no blockchain transactions required</p>
               </div>
             </CardContent>
           </Card>

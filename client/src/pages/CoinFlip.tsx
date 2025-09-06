@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Coins } from "lucide-react";
-import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
+import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
 
 type CoinSide = 'heads' | 'tails';
 type GameResult = 'win' | 'lose' | null;
@@ -41,26 +41,9 @@ export default function CoinFlip() {
     setIsFlipping(true);
     setShowResult(false);
     setIsProcessingTx(true);
-    playSound('click');
+    playGameSound('click');
     
     try {
-      // Place bet transaction (gameType: 1 for CoinFlip, prediction: 0 for heads, 1 for tails)
-      const prediction = choice === 'heads' ? 0 : 1;
-      
-      toast({
-        title: "Placing bet...",
-        description: "Confirm the transaction in your wallet",
-      });
-
-      console.log('Placing bet:', { gameType: 1, prediction, choice, address });
-      const betTxHash = await placeBetTransaction(address, 1, prediction, '0.01');
-      
-      console.log('Bet transaction successful:', betTxHash);
-      toast({
-        title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}... - Check Celo Explorer`,
-      });
-
       // Simulate coin flip animation
       await new Promise(resolve => setTimeout(resolve, 2000));
       
@@ -72,6 +55,9 @@ export default function CoinFlip() {
       const gameResult = choice === flipResult ? 'win' : 'lose';
       setResult(gameResult);
       
+      // Handle game result
+      const result = await handleGameResult('coin', gameResult, address);
+      
       // Show result after animation
       setTimeout(async () => {
         setShowResult(true);
@@ -80,38 +66,14 @@ export default function CoinFlip() {
           dispatch({ type: 'WIN_GAME', payload: { gameType: 'coin' } });
           playSound('win');
           
-          try {
-            // Mint NFT transaction
-            toast({
-              title: "Minting NFT...",
-              description: "Confirm the NFT mint transaction",
-            });
-
-            console.log('Minting NFT for winner:', address);
-            const mintTxHash = await mintNFTTransaction(address);
-            console.log('NFT mint transaction successful:', mintTxHash);
-            
-            toast({
-              title: "Perfect Call! 🎉",
-              description: `You earned 10 points and an NFT! Tx: ${mintTxHash.slice(0, 10)}... - Check Celo Explorer`,
-            });
-          } catch (error: any) {
-            console.error('NFT mint failed:', error);
-            console.error('NFT mint error details:', {
-              message: error.message,
-              code: error.code,
-              data: error.data
-            });
-            toast({
-              title: "Win recorded, NFT mint failed",
-              description: error.message || "NFT minting transaction failed",
-              variant: "destructive",
-            });
-          }
+          toast({
+            title: "Perfect Call! 🎉",
+            description: `You earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'}`,
+          });
         } else {
           toast({
             title: "Better Luck Next Time!",
-            description: "Your bet was processed but you lost this round",
+            description: "Try again for the win!",
             variant: "destructive",
           });
         }
@@ -120,23 +82,16 @@ export default function CoinFlip() {
       }, 500);
 
     } catch (error: any) {
-      console.error('Bet transaction failed:', error);
-      console.error('Error details:', {
-        message: error.message,
-        code: error.code,
-        data: error.data,
-        stack: error.stack
-      });
+      console.error('Game failed:', error);
       setIsFlipping(false);
       setIsProcessingTx(false);
       
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to place bet on blockchain",
+        title: "Game failed",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
       
-      // Reset game state on transaction failure
       resetGame();
     }
   };
@@ -169,7 +124,7 @@ export default function CoinFlip() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Coin Flip</h1>
-              <p className="text-muted-foreground">Call heads or tails! (0.01 cUSD bet)</p>
+              <p className="text-muted-foreground">Call heads or tails and earn points!</p>
             </div>
           </div>
           
@@ -371,12 +326,11 @@ export default function CoinFlip() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Connect your wallet to place bets</p>
+                <p>• Connect your wallet to play</p>
                 <p>• Choose heads (👑) or tails (⭐)</p>
-                <p>• Place a 0.01 cUSD bet on Celo mainnet</p>
                 <p>• Watch the coin flip animation</p>
-                <p>• If your prediction matches, you win and get an NFT!</p>
-                <p>• All transactions are real and recorded on Celo blockchain</p>
+                <p>• If your prediction matches, you win and get points + NFT URI!</p>
+                <p>• Instant play - no blockchain transactions required</p>
               </div>
             </CardContent>
           </Card>

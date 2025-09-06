@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw, Target, TrendingUp, TrendingDown } from "lucide-react";
-import { placeBetTransaction, mintNFTTransaction } from "@/utils/divvi";
+import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
 
 export default function GuessNumber() {
   const { state, dispatch } = useGameState();
@@ -48,22 +48,9 @@ export default function GuessNumber() {
     }
 
     setIsProcessingTx(true);
-    playSound('click');
+    playGameSound('click');
 
     try {
-      // Place bet transaction (gameType: 3 for GuessNumber, prediction: guessed number)
-      toast({
-        title: "Placing bet...",
-        description: "Confirm the transaction in your wallet",
-      });
-
-      const betTxHash = await placeBetTransaction(address, 3, guessNumber, '0.01');
-      
-      toast({
-        title: "Bet placed! 🎲",
-        description: `Transaction: ${betTxHash.slice(0, 10)}...`,
-      });
-
       setIsRevealing(true);
       const newAttempts = attempts + 1;
       setAttempts(newAttempts);
@@ -76,29 +63,16 @@ export default function GuessNumber() {
         dispatch({ type: 'WIN_GAME', payload: { gameType: 'guess' } });
         playSound('win');
         
-        try {
-          // Mint NFT transaction
-          toast({
-            title: "Minting NFT...",
-            description: "Confirm the NFT mint transaction",
-          });
-
-          const mintTxHash = await mintNFTTransaction(address);
-          
-          toast({
-            title: "Perfect Guess! 🎉",
-            description: `You found ${targetNumber} in ${newAttempts} attempts! NFT minted! Tx: ${mintTxHash.slice(0, 10)}...`,
-          });
-        } catch (error: any) {
-          console.error('NFT mint failed:', error);
-          toast({
-            title: "Win recorded, NFT mint failed",
-            description: error.message || "NFT minting transaction failed",
-            variant: "destructive",
-          });
-        }
+        // Handle game result
+        const result = await handleGameResult('guess', 'win', address);
+        
+        toast({
+          title: "Perfect Guess! 🎉",
+          description: `You found ${targetNumber} in ${newAttempts} attempts! Earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'}`,
+        });
       } else if (newAttempts >= maxAttempts) {
         setGameResult('lose');
+        await handleGameResult('guess', 'lose', address);
         const newHint = `Game Over! The number was ${targetNumber}`;
         setHints(prev => [...prev, newHint]);
         toast({
@@ -123,13 +97,13 @@ export default function GuessNumber() {
       setIsProcessingTx(false);
 
     } catch (error: any) {
-      console.error('Bet transaction failed:', error);
+      console.error('Game failed:', error);
       setIsProcessingTx(false);
       setIsRevealing(false);
       
       toast({
-        title: "Transaction failed",
-        description: error.message || "Failed to place bet on blockchain",
+        title: "Game failed",
+        description: "Something went wrong. Please try again.",
         variant: "destructive",
       });
     }
@@ -164,7 +138,7 @@ export default function GuessNumber() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Guess the Number</h1>
-              <p className="text-muted-foreground">Find the number 1-100! (0.01 cUSD bet per guess)</p>
+              <p className="text-muted-foreground">Find the number 1-100 and earn points!</p>
             </div>
           </div>
           
@@ -362,13 +336,12 @@ export default function GuessNumber() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>• Connect your wallet to place bets</p>
+                <p>• Connect your wallet to play</p>
                 <p>• Guess a number between 1 and 100</p>
-                <p>• Each guess costs 0.01 cUSD bet on Celo mainnet</p>
                 <p>• You have {maxAttempts} attempts to find the number</p>
                 <p>• Get hints if your guess is too high or too low</p>
-                <p>• Find the exact number to earn 10 points and an NFT!</p>
-                <p>• All transactions are real and recorded on Celo blockchain</p>
+                <p>• Find the exact number to earn 10 points and an NFT URI!</p>
+                <p>• Instant play - no blockchain transactions required</p>
               </div>
             </CardContent>
           </Card>
