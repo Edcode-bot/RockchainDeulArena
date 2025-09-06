@@ -75,7 +75,7 @@ export default function RPS() {
       setResult(gameResult);
       
       // Handle game result
-      const result = await handleGameResult('rps', gameResult, address);
+      const result = await handleGameResult('rps', gameResult as 'win' | 'lose' | 'draw', address);
       
       setTimeout(async () => {
         setShowResult(true);
