@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { handleGameResult, playSound as playGameSound } from "@/utils/gameApi";
+import { sendDivviTransaction } from "@/utils/divvi";
+import { parseEther } from "viem";
 
 type Choice = 'rock' | 'paper' | 'scissors';
 type GameResult = 'win' | 'lose' | 'draw' | null;
@@ -43,9 +45,10 @@ export default function RPS() {
   const [isRevealing, setIsRevealing] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [isProcessingTx, setIsProcessingTx] = useState(false);
+  const [isBetting, setIsBetting] = useState(false);
 
   const handleChoice = async (choice: Choice) => {
-    if (isRevealing || !isConnected || !address) {
+    if (isRevealing || !isConnected || !address || isBetting) {
       if (!isConnected) {
         toast({
           title: "Wallet not connected",
@@ -60,9 +63,31 @@ export default function RPS() {
     setIsRevealing(true);
     setShowResult(false);
     setIsProcessingTx(true);
+    setIsBetting(true);
     playGameSound('click');
     
     try {
+      // Place Divvi bet transaction
+      toast({
+        title: "Placing bet...",
+        description: "Confirm the transaction in your wallet",
+      });
+
+      const betAmount = "0.01";
+      const txHash = await sendDivviTransaction({
+        account: address as `0x${string}`,
+        to: "0xe38a456433FfF7814e40998cf0Cbbbd2c885B513" as `0x${string}`,
+        data: "0x",
+        value: parseEther(betAmount),
+      });
+
+      toast({
+        title: "Bet placed! 🎲",
+        description: `Transaction: ${txHash.slice(0, 10)}...`,
+      });
+
+      setIsBetting(false);
+      
       // Simulate computer choice animation
       await new Promise(resolve => setTimeout(resolve, 1500));
       
@@ -74,8 +99,8 @@ export default function RPS() {
       const gameResult = getWinner(choice, compChoice);
       setResult(gameResult);
       
-      // Handle game result
-      const result = await handleGameResult('rps', gameResult as 'win' | 'lose' | 'draw', address);
+      // Handle game result with bet data
+      const result = await handleGameResult('rps', gameResult as 'win' | 'lose' | 'draw', address, betAmount, txHash);
       
       setTimeout(async () => {
         setShowResult(true);
@@ -86,17 +111,17 @@ export default function RPS() {
           
           toast({
             title: "Victory! 🎉",
-            description: `You earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'}`,
+            description: `You earned ${result.points} points${result.nftUri ? ' and an NFT!' : '!'} | Bet: ${betAmount} ETH`,
           });
         } else if (gameResult === 'draw') {
           toast({
             title: "It's a Draw!",
-            description: "Try again for the win!",
+            description: `Draw! Try again! | Bet: ${betAmount} ETH`,
           });
         } else {
           toast({
             title: "You Lost!",
-            description: "Better luck next time!",
+            description: `Better luck next time! | Bet: ${betAmount} ETH`,
             variant: "destructive",
           });
         }
@@ -105,17 +130,16 @@ export default function RPS() {
       }, 1000);
 
     } catch (error: any) {
-      console.error('Game failed:', error);
-      setIsRevealing(false);
+      console.error('Bet transaction failed:', error);
       setIsProcessingTx(false);
+      setIsBetting(false);
+      setIsRevealing(false);
       
       toast({
-        title: "Game failed",
-        description: "Something went wrong. Please try again.",
+        title: "Transaction failed",
+        description: error.message || "Failed to place bet on blockchain",
         variant: "destructive",
       });
-      
-      resetGame();
     }
   };
 
@@ -126,6 +150,7 @@ export default function RPS() {
     setIsRevealing(false);
     setShowResult(false);
     setIsProcessingTx(false);
+    setIsBetting(false);
   };
 
   return (
@@ -147,7 +172,7 @@ export default function RPS() {
             </Link>
             <div>
               <h1 className="text-3xl font-black">Rock Paper Scissors</h1>
-              <p className="text-muted-foreground">Beat the computer and earn points!</p>
+              <p className="text-muted-foreground">Beat the computer! (0.01 ETH bet via Divvi)</p>
             </div>
           </div>
           
