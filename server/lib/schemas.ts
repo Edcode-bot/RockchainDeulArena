@@ -32,6 +32,8 @@ export const GameResultSchema = z.object({
   address: z.string().toLowerCase(),
   gameId: z.enum(['rps', 'coin', 'dice', 'guess', 'tictactoe', 'blackjack', 'memory', '2048', 'reaction', 'scramble']),
   result: z.enum(['win', 'loss', 'draw']),
+  betAmount: z.string().optional(), // ETH amount as string
+  txHash: z.string().optional(), // Divvi transaction hash
   pointsDelta: z.number(),
   nftUri: z.string().optional(),
   createdAt: z.date().default(() => new Date())
@@ -67,6 +69,8 @@ export const GameResultRequestSchema = z.object({
   address: z.string(),
   gameId: z.string(),
   result: z.enum(['win', 'loss', 'draw']),
+  betAmount: z.string().optional(),
+  txHash: z.string().optional(),
   signature: z.string(),
   message: z.string()
 });

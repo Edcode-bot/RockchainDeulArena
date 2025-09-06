@@ -1,48 +1,54 @@
-// Simple game API utilities for standalone system
-// No blockchain transactions - just local state management
+// Game API utilities with Divvi integration and MongoDB persistence
 
 export interface GameResult {
   gameId: string;
   result: 'win' | 'lose' | 'draw';
   points: number;
   nftUri?: string;
+  txHash?: string;
 }
 
-// Simple game result handler for local state
+// Handle game result with optional Divvi transaction
 export async function handleGameResult(
   gameId: string,
   result: 'win' | 'lose' | 'draw',
-  address?: string
+  address: string,
+  betAmount?: string,
+  txHash?: string
 ): Promise<GameResult> {
-  // Simulate processing time
-  await new Promise(resolve => setTimeout(resolve, 500));
-  
-  const points = result === 'win' ? 10 : result === 'draw' ? 2 : 0;
-  let nftUri: string | undefined;
-  
-  // Award NFT URI for wins
-  if (result === 'win') {
-    const nftUris: Record<string, string> = {
-      'rps': 'ipfs://rps-nft',
-      'coin': 'ipfs://coin-nft', 
-      'dice': 'ipfs://dice-nft',
-      'guess': 'ipfs://guess-nft',
-      'tictactoe': 'ipfs://tictactoe-nft',
-      'blackjack': 'ipfs://blackjack-nft',
-      'memory': 'ipfs://memory-nft',
-      '2048': 'ipfs://2048-nft',
-      'reaction': 'ipfs://reaction-nft',
-      'scramble': 'ipfs://scramble-nft'
+  try {
+    const response = await fetch('/api/game/result', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        address,
+        gameId,
+        result,
+        betAmount,
+        txHash,
+        signature: 'mock_signature', // Replace with actual wallet signature
+        message: `RockChain game result: ${gameId} ${result} @ ${Date.now()}`
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Game result failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+      gameId,
+      result,
+      points: data.pointsEarned || 0,
+      nftUri: data.nftEarned || undefined,
+      txHash: data.gameResult?.txHash
     };
-    nftUri = nftUris[gameId];
+  } catch (error) {
+    console.error('Game result error:', error);
+    throw error;
   }
-  
-  return {
-    gameId,
-    result,
-    points,
-    nftUri
-  };
 }
 
 // Helper to play sound effects

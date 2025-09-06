@@ -1,0 +1,197 @@
+You are building RockChain Duel Arena in React + TypeScript (Vite), backend via Vercel serverless functions, storage via MongoDB Atlas. Deployable on Vercel.
+
+Setup
+
+Keep: react-router-dom framer-motion howler @reown/appkit @reown/appkit-adapter-ethers ethers axios mongodb zod @divvi/referral-sdk.
+
+Mobile-first, with bottom navigation on dashboard.
+
+Use cool gradient palette (blue/purple modern tones).
+
+Dynamic landing page indexed for SEO.
+
+
+
+---
+
+Divvi Betting Integration (restore & enforce)
+
+Reinstate Divvi transaction flow into all betting-enabled games.
+
+Each bet transaction must:
+
+1. Create wallet client.
+
+
+2. Generate referral tag with user + consumer.
+
+
+3. Append referral tag to transaction data.
+
+
+4. Send transaction with bet amount.
+
+
+5. Submit transaction to Divvi.
+
+
+
+Use this exact snippet in src/utils/divi.ts:
+
+
+import { getReferralTag, submitReferral } from '@divvi/referral-sdk'
+import { createWalletClient, custom } from 'viem'
+import { mainnet } from 'viem/chains'
+
+export const sendDivviTransaction = async ({
+  account,
+  to,
+  data,
+  value,
+}: {
+  account: `0x${string}`
+  to: `0x${string}`
+  data: string
+  value: bigint
+}) => {
+  const walletClient = createWalletClient({
+    chain: mainnet,
+    transport: custom(window.ethereum),
+  })
+
+  const referralTag = getReferralTag({
+    user: account,
+    consumer: '0xe38a456433FfF7814e40998cf0Cbbbd2c885B513', // RockChain Duel Arena identifier
+  })
+
+  const txHash = await walletClient.sendTransaction({
+    account,
+    to,
+    data: data + referralTag,
+    value,
+  })
+
+  const chainId = await walletClient.getChainId()
+
+  await submitReferral({
+    txHash,
+    chainId,
+  })
+
+  return txHash
+}
+
+Call sendDivviTransaction from each game’s bet logic.
+
+On success: record txHash, result, and points in MongoDB.
+
+
+
+---
+
+Reward System (separate from Divvi)
+
+Add Claim Reward button in Dashboard:
+
+Daily Streak (+5 points every 24h).
+
+Referral Claim (+10 points per referral).
+
+
+Store streaks/referrals in MongoDB.
+
+Endpoint /api/claim/* handles claims.
+
+Keep Divvi logic completely separate from claims.
+
+
+
+---
+
+Games
+
+Keep 5 original: Rock-Paper-Scissors, CoinFlip, DiceRoll, GuessNumber, TicTacToe.
+
+Add 5 new: Blackjack, Memory Match, 2048, Reaction Time, Word Scramble.
+
+Blackjack, 2048 → support bets via Divvi.
+
+Others → points-only.
+
+
+Store all results in games collection with:
+{ address, gameId, betAmount, result, txHash?, createdAt }.
+
+
+
+---
+
+Dashboard & UI
+
+Dynamic dashboard showing:
+
+Username (editable)
+
+Points, streaks, NFTs, rank
+
+Leaderboard preview
+
+Claim Reward buttons
+
+
+Arena cards: high-quality images, carousel layout.
+
+Profile page: edit username, view NFTs, ranks.
+
+Responsive design (mobile optimized).
+
+Use toasts for success/failure.
+
+
+
+---
+
+SEO & Deployment
+
+Add meta tags, sitemap, robots.txt.
+
+Landing page content indexable.
+
+Ready for Vercel deploy.
+
+
+
+---
+
+Base Mini App Import
+
+Add public/farcaster.json:
+
+
+{
+  "baseBuilder": {
+    "allowedAddresses": ["0x2cca5694Fc4938Cf5006d5780E41522B9332F4B8"]
+  }
+}
+
+Link Vercel app URL.
+
+
+
+---
+
+Acceptance Criteria
+
+Divvi transactions fully restored and working with referral tracking.
+
+Claims independent and functional.
+
+MongoDB persists all user/game/claim data.
+
+10 games visible, working, and responsive.
+
+Dashboard dynamic, Arena cards modern.
+
+SEO ready, Base import ready.
+
+No mocks, no TS errors.

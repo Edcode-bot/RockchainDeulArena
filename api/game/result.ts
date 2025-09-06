@@ -10,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Validate request body
-    const { address, gameId, result, signature, message } = GameResultRequestSchema.parse(req.body);
+    const { address, gameId, result, betAmount, txHash, signature, message } = GameResultRequestSchema.parse(req.body);
 
     // Verify signature
     const recoveredAddress = ethers.verifyMessage(message, signature);
@@ -71,6 +71,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       address: normalizedAddress,
       gameId: gameId as any,
       result: result === 'loss' ? 'loss' : result,
+      betAmount,
+      txHash,
       pointsDelta,
       nftUri,
       createdAt: new Date()
