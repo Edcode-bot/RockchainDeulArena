@@ -24,12 +24,18 @@ import {
   DollarSign
 } from "lucide-react";
 
+// 🔥 Divvi SDK + Viem
+import { getReferralTag, submitReferral } from "@divvi/referral-sdk";
+import { createWalletClient, custom } from "viem";
+import { mainnet } from "viem/chains";
+
 export default function Profile() {
   const { state } = useGameState();
   const { address, balance, disconnect } = useWallet();
   const { theme, language, toggleTheme, toggleLanguage } = useTheme();
   const { toast } = useToast();
 
+  // 📌 Copy Wallet Address
   const handleCopyAddress = () => {
     if (address) {
       navigator.clipboard.writeText(address);
@@ -40,6 +46,7 @@ export default function Profile() {
     }
   };
 
+  // 📌 Convert Points to cUSD (future)
   const handleConvertToCUSD = () => {
     toast({
       title: "Convert to cUSD",
@@ -47,6 +54,7 @@ export default function Profile() {
     });
   };
 
+  // 📌 Share on Farcaster (future)
   const handleShareOnFarcaster = () => {
     toast({
       title: "Share on Farcaster",
@@ -54,6 +62,55 @@ export default function Profile() {
     });
   };
 
+  // 📌 Claim Referral Reward (Divvi integration)
+  const handleClaimReferral = async () => {
+    try {
+      if (!window.ethereum) {
+        toast({
+          title: "Wallet Missing",
+          description: "Please connect a wallet first.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Create wallet client
+      const client = createWalletClient({
+        chain: mainnet,
+        transport: custom(window.ethereum),
+      });
+
+      const [account] = await client.getAddresses();
+
+      // Get referral tag from Divvi
+      const tag = getReferralTag();
+
+      // Send dummy 0 CELO transaction with referral tag
+      const hash = await client.sendTransaction({
+        account,
+        to: account,
+        value: 0n,
+        data: tag as `0x${string}`,
+      });
+
+      // Report transaction to Divvi
+      await submitReferral({ txHash: hash, chainId: mainnet.id });
+
+      toast({
+        title: "Referral Claimed 🎉",
+        description: "Your referral reward has been recorded!",
+      });
+    } catch (error) {
+      console.error("Referral claim failed:", error);
+      toast({
+        title: "Error",
+        description: "Failed to claim referral reward. Try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // 📌 NFT display name
   const getNFTDisplayName = (nftUri: string) => {
     const gameType = nftUri.split('/')[2]?.split('-')[0];
     switch (gameType) {
@@ -66,6 +123,7 @@ export default function Profile() {
     }
   };
 
+  // 📌 Translations
   const translations = {
     en: {
       profile: "Profile",
@@ -133,26 +191,26 @@ export default function Profile() {
                   <p className="text-muted-foreground">Gaming since 2025</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <Trophy className="h-8 w-8 text-primary mx-auto mb-2" />
                   <div className="text-2xl font-bold" data-testid="text-profile-points">{state.points}</div>
                   <div className="text-sm text-muted-foreground">Points</div>
                 </div>
-                
+
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <Gift className="h-8 w-8 text-accent mx-auto mb-2" />
                   <div className="text-2xl font-bold" data-testid="text-profile-nfts">{state.nfts.length}</div>
                   <div className="text-sm text-muted-foreground">NFTs</div>
                 </div>
-                
+
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <Zap className="h-8 w-8 text-secondary mx-auto mb-2" />
                   <div className="text-2xl font-bold" data-testid="text-profile-streak">{state.streak}</div>
                   <div className="text-sm text-muted-foreground">Streak</div>
                 </div>
-                
+
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <Trophy className="h-8 w-8 text-foreground mx-auto mb-2" />
                   <div className="text-2xl font-bold">#42</div>
@@ -194,7 +252,7 @@ export default function Profile() {
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              
+
               <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                 <div>
                   <p className="text-sm text-muted-foreground">Balance</p>
@@ -214,7 +272,7 @@ export default function Profile() {
                   <DollarSign className="mr-2 h-4 w-4" />
                   Convert Points to cUSD
                 </Button>
-                
+
                 <Button 
                   onClick={handleShareOnFarcaster}
                   className="w-full"
@@ -224,7 +282,18 @@ export default function Profile() {
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Share on Farcaster
                 </Button>
-                
+
+                {/* 🔥 Divvi Claim Button */}
+                <Button 
+                  onClick={handleClaimReferral}
+                  className="w-full"
+                  variant="default"
+                  data-testid="button-claim-referral"
+                >
+                  <Gift className="mr-2 h-4 w-4" />
+                  Claim Referral Reward
+                </Button>
+
                 <Button 
                   onClick={disconnect}
                   className="w-full"
@@ -267,9 +336,9 @@ export default function Profile() {
                   data-testid="switch-theme"
                 />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <Globe className="h-5 w-5" />
