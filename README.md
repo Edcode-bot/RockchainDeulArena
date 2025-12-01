@@ -193,13 +193,3 @@ Multiplayer PvP duels
 Seasonal tournaments & leaderboard resets
 
 Mainnet launch after hackathon
-
-
-
----
-
-This README makes RockchainDuelArena look polished, fully thought-out, and hackathon-ready.
-
-If you want, I can also create a ready-to-paste SUBMISSION.md that maps each hackathon requirement to the features in this README, so judges see everything instantly.
-
-Do you want me to do that next?
