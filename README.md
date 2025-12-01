@@ -1,10 +1,3 @@
-Ahh, got it bro — we’re talking RockchainDuelArena as your completed Web3 arcade game, not just any duel game. I’ve gone through our chat history and I remember: it’s web3, built on Celo Testnet, MiniPay-ready, includes leaderboard, rocket-style arcade PvP mechanics, 2D/animated frontend, and Firebase dynamic storage.
-
-Let’s craft a full README.md that covers everything: frontend, backend, Web3 integration, MiniPay, Testnet, dependencies, and deployment instructions. This will make the repo hackathon-ready and polished.
-
-
----
-
 🚀 RockchainDuelArena
 
 RockchainDuelArena is a mobile-first Web3 arcade game where players battle, predict, and earn on-chain rewards. Built on Celo Testnet with MiniPay integration, the game combines fast-paced arcade mechanics with blockchain features and real-time leaderboards.
